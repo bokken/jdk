@@ -950,11 +950,8 @@ public abstract sealed class $Type$Buffer
         return get(index, dst, 0, dst.length);
     }
 
-    private $Type$Buffer getArray(int index, $type$[] dst, int offset, int length) {
+    $Type$Buffer getArray(int index, $type$[] dst, int offset, int length) {
         if (
-#if[char]
-            isAddressable() &&
-#end[char]
             ((long)length << $LG_BYTES_PER_VALUE$) > Bits.JNI_COPY_TO_ARRAY_THRESHOLD) {
             long bufAddr = address + ((long)index << $LG_BYTES_PER_VALUE$);
             long dstOffset =
@@ -1150,9 +1147,13 @@ public abstract sealed class $Type$Buffer
 #if[char]
         } else { // src.isAddressable() == false
             assert StringCharBuffer.class.isInstance(src);
-            int posMax = pos + n;
-            for (int i = pos, j = srcPos; i < posMax; i++, j++)
-                put(i, src.get(j));
+            if (this.hasArray()) {
+                ((StringCharBuffer) src).getArray(srcPos, hb, pos, n);
+            } else {
+	            int posMax = pos + n;
+	            for (int i = pos, j = srcPos; i < posMax; i++, j++)
+	                put(i, src.get(j));
+	        }
         }
 #end[char]
 #else[rw]
