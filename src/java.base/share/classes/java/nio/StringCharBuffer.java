@@ -184,7 +184,7 @@ final class StringCharBuffer                                  // package-private
 
     CharBuffer getArray(int index, char[] dst, int offset, int length) {
     	int begin = index + this.offset;
-    	Objects.checkFromIndexSize(begin, this.limit(), length);
+    	Objects.checkFromIndexSize(begin, length, this.limit());
     	str.getChars(begin, begin + length, dst, offset);
     	return this;
     }

@@ -1147,13 +1147,13 @@ public abstract sealed class $Type$Buffer
 #if[char]
         } else { // src.isAddressable() == false
             assert StringCharBuffer.class.isInstance(src);
-            if (this.hasArray()) {
-                ((StringCharBuffer) src).getArray(srcPos, hb, pos, n);
+            if (this.hb != null) {
+                ((StringCharBuffer) src).getArray(srcPos, this.hb, pos, n);
             } else {
-	            int posMax = pos + n;
-	            for (int i = pos, j = srcPos; i < posMax; i++, j++)
-	                put(i, src.get(j));
-	        }
+                int posMax = pos + n;
+                for (int i = pos, j = srcPos; i < posMax; i++, j++)
+                    put(i, src.get(j));
+            }
         }
 #end[char]
 #else[rw]
