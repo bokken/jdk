@@ -186,5 +186,6 @@ final class StringCharBuffer                                  // package-private
     	int begin = index + this.offset;
     	Objects.checkFromIndexSize(begin, this.limit(), length);
     	str.getChars(begin, begin + length, dst, offset);
+    	return this;
     }
 }
