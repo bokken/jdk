@@ -1290,10 +1290,11 @@ public final class String
         }
 
         byte[] dst = StringUTF16.newBytesFor(val.length);
-        if (positives > 0) {
+        int dp = 0;
+        if (positives > 4) {
             System.arraycopy(val, 0, dst, 0, positives);
+            dp = positives;
         }
-        int dp = positives;
         for (int i = dp; i < val.length; i++) {
             byte c = val[i];
             if (c < 0) {
