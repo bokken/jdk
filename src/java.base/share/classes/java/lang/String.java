@@ -1289,19 +1289,35 @@ public final class String
             return val.clone();
         }
 
-        byte[] dst = StringUTF16.newBytesFor(val.length);
+        return slowEncodeLatin1UTF8(val, positives);
+    }
+
+    private static byte[] slowEncodeLatin1UTF8(byte[] val, int positives) {
+        byte[] dst = StringUTF16.newBytesFor(val.length - (positives >> 1));
         int dp = 0;
         if (positives > 4) {
             System.arraycopy(val, 0, dst, 0, positives);
             dp = positives;
         }
+        int consecutivePositives = 0;
         for (int i = dp; i < val.length; i++) {
             byte c = val[i];
             if (c < 0) {
                 dst[dp++] = (byte) (0xc0 | ((c & 0xff) >> 6));
                 dst[dp++] = (byte) (0x80 | (c & 0x3f));
+                consecutivePositives = 0;
             } else {
                 dst[dp++] = c;
+                ++consecutivePositives;
+            }
+            if (consecutivePositives > 4 && val.length - i > 8) {
+                int pos = StringCoding.countPositives(val, i + 1, val.length - 1 - i);
+                if (pos > 4) {
+                    System.arraycopy(val, i + 1, dst, dp, pos);
+                    i += pos;
+                    dp += pos;
+                }
+                consecutivePositives = 0;
             }
         }
         if (dp == dst.length) {
