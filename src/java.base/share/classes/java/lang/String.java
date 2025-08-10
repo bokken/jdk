@@ -1329,11 +1329,36 @@ public final class String
     private static byte[] slowEncode2Latin1UTF8(byte[] val, int positives) {
         byte[] dst = StringUTF16.newBytesFor(val.length - (positives >> 1));
         int dp = 0;
-        if (positives > 4) {
-            System.arraycopy(val, 0, dst, 0, positives);
-            dp = positives;
+        if (val.length < 16) {
+            for (int i = 0; i < val.length; i++) {
+                byte c = val[i];
+                if (c < 0) {
+                    dst[dp++] = (byte) (0xc0 | ((c & 0xff) >> 6));
+                    dst[dp++] = (byte) (0x80 | (c & 0x3f));
+                } else {
+                    dst[dp++] = c;
+                }
+            }
+        } else {
+            if (positives > 8) {
+                System.arraycopy(val, 0, dst, 0, positives);
+                dp = positives;
+            } else {
+                for (; dp < positives; ++dp) {
+                    dst[dp] = val[dp];
+                }
+            }
+            // now we know the next character is negative
+            // process all consecutive negatives before striding longs
+            int i = dp;
+            byte c = val[i];
+            do {
+                dst[dp++] = (byte) (0xc0 | ((c & 0xff) >> 6));
+                dst[dp++] = (byte) (0x80 | (c & 0x3f));
+                ++i;
+            } while (i < val.length && (c = val[i]) < 0);
+            dp = StringCoding.processLatin1(val, i, dst, dp);
         }
-        dp = StringCoding.processLatin1(val, dp, dst, dp);
         if (dp == dst.length) {
             return dst;
         }
