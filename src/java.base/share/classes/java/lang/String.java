@@ -1289,7 +1289,7 @@ public final class String
             return val.clone();
         }
 
-        return slowEncodeLatin1UTF8(val, positives);
+        return slowEncode2Latin1UTF8(val, positives);
     }
 
     private static byte[] slowEncodeLatin1UTF8(byte[] val, int positives) {
@@ -1320,6 +1320,20 @@ public final class String
                 consecutivePositives = 0;
             }
         }
+        if (dp == dst.length) {
+            return dst;
+        }
+        return Arrays.copyOf(dst, dp);
+    }
+
+    private static byte[] slowEncode2Latin1UTF8(byte[] val, int positives) {
+        byte[] dst = StringUTF16.newBytesFor(val.length - (positives >> 1));
+        int dp = 0;
+        if (positives > 4) {
+            System.arraycopy(val, 0, dst, 0, positives);
+            dp = positives;
+        }
+        dp = StringCoding.processLatin1(val, dp, dst, dp);
         if (dp == dst.length) {
             return dst;
         }

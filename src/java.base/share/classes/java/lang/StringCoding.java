@@ -33,7 +33,46 @@ import jdk.internal.vm.annotation.IntrinsicCandidate;
  */
 class StringCoding {
 
+    private static final long LONG_NEG_MASK = 0x8080808080808080L;
+
     private StringCoding() { }
+
+    static interface Latin1CharHandlingFunction {
+        int handle(byte b, byte[] dst, int dstIdx);
+    }
+
+    public static int processLatin1(byte[] val, int sourceIdx, byte[] dest, int destIdx) {
+        int dp = destIdx;
+        int i = sourceIdx;
+        for (int j=val.length - 7; i<j; i+=8) {
+            long word = jdk.internal.util.ByteArrayLittleEndian.getLong(val, i);
+            if ((word & LONG_NEG_MASK) == 0) {
+                jdk.internal.util.ByteArrayLittleEndian.setLong(dest, dp, word);
+                dp += 8;
+            } else {
+                for (int x=i, y=i+8; x<y; x++) {
+                    byte c = val[x];
+                    if (c < 0) {
+                        dest[dp++] = (byte) (0xc0 | ((c & 0xff) >> 6));
+                        dest[dp++] = (byte) (0x80 | (c & 0x3f));
+                    } else {
+                        dest[dp++] = c;
+                    }
+                }
+            }
+        }
+
+        for (; i < val.length; i++) {
+            byte c = val[i];
+            if (c < 0) {
+                dest[dp++] = (byte) (0xc0 | ((c & 0xff) >> 6));
+                dest[dp++] = (byte) (0x80 | (c & 0x3f));
+            } else {
+                dest[dp++] = c;
+            }
+        }
+        return dp;
+    }
 
     /**
      * Count the number of leading non-zero ascii chars in the range.
