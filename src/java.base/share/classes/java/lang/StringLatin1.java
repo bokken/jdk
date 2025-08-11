@@ -775,6 +775,58 @@ final class StringLatin1 {
         StringUTF16.inflate(src, srcOff, dst, dstOff, len);
     }
 
+    private static final long LONG_NEG_MASK = 0x8080808080808080L;
+
+    public static int processLatin1(byte[] val, int sourceIdx, byte[] dest, int destIdx) {
+        int dp = destIdx;
+        int i = sourceIdx;
+        // we know we are starting in proximity to a negative value
+        int positives = 0;
+        for (; i < val.length && positives < 8; ++i) {
+            byte c = val[i];
+            if (c < 0) {
+                dest[dp++] = (byte) (0xc0 | ((c & 0xff) >> 6));
+                dest[dp++] = (byte) (0x80 | (c & 0x3f));
+                positives = 0;
+            } else {
+                dest[dp++] = c;
+                ++positives;
+            }
+        }
+        for (int j = val.length - 7; i < j;) {
+            long word = jdk.internal.util.ByteArrayLittleEndian.getLong(val, i);
+            if ((word & LONG_NEG_MASK) == 0) {
+                jdk.internal.util.ByteArrayLittleEndian.setLong(dest, dp, word);
+                dp += 8;
+                i += 8;
+            } else {
+                positives = 0;
+                for (; i < val.length && positives < 8; ++i) {
+                    byte c = val[i];
+                    if (c < 0) {
+                        dest[dp++] = (byte) (0xc0 | ((c & 0xff) >> 6));
+                        dest[dp++] = (byte) (0x80 | (c & 0x3f));
+                        positives = 0;
+                    } else {
+                        dest[dp++] = c;
+                        ++positives;
+                    }
+                }
+            }
+        }
+
+        for (; i < val.length; i++) {
+            byte c = val[i];
+            if (c < 0) {
+                dest[dp++] = (byte) (0xc0 | ((c & 0xff) >> 6));
+                dest[dp++] = (byte) (0x80 | (c & 0x3f));
+            } else {
+                dest[dp++] = c;
+            }
+        }
+        return dp;
+    }
+
     static class CharsSpliterator implements Spliterator.OfInt {
         private final byte[] array;
         private int index;        // current index, modified on advance/split
