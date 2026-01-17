@@ -239,13 +239,44 @@ public class ISO_8859_1
             }
         }
 
+        private CoderResult encodeProducer(CharBuffer src,
+                                           sun.nio.RawCharacterProducer producer,
+                                           ByteBuffer dst)
+        {
+            final CoderResult result;
+            while (src.hasRemaining()) {
+                int copied = producer.copyLatin1(dst, src.position(), Math.min(src.remaining(), dst.remaining()));
+                int newPosition = src.position() + copied;
+                src.position(newPosition);
+                if (src.hasRemaining()) {
+                    try {
+                        char c = src.get();
+                        if (c <= '\u00FF') {
+                            if (!dst.hasRemaining())
+                                return CoderResult.OVERFLOW;
+                            dst.put((byte) c);
+                            newPosition++;
+                        } else {
+                            if (sgp.parse(c, src) < 0)
+                                return sgp.error();
+                            return sgp.unmappableResult();
+                        }
+                    } finally {
+                        src.position(newPosition);
+                    }
+                }
+            }
+            return CoderResult.UNDERFLOW;
+        }
+
         protected CoderResult encodeLoop(CharBuffer src,
                                          ByteBuffer dst)
         {
+            if (src instanceof sun.nio.RawCharacterProducer producer)
+                encodeProducer(producer, dst);
             if (src.hasArray() && dst.hasArray())
                 return encodeArrayLoop(src, dst);
-            else
-                return encodeBufferLoop(src, dst);
+            return encodeBufferLoop(src, dst);
         }
     }
 }

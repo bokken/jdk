@@ -25,9 +25,6 @@
 
 package sun.nio.cs;
 
-import jdk.internal.access.JavaLangAccess;
-import jdk.internal.access.SharedSecrets;
-
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -36,7 +33,11 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.CoderResult;
 
-import static sun.nio.cs.CharsetMapping.*;
+import static sun.nio.cs.CharsetMapping.UNMAPPABLE_DECODING;
+import static sun.nio.cs.CharsetMapping.UNMAPPABLE_ENCODING;
+
+import jdk.internal.access.JavaLangAccess;
+import jdk.internal.access.SharedSecrets;
 
 public class SingleByte
 {
@@ -186,6 +187,7 @@ public class SingleByte
     public static final class Encoder extends CharsetEncoder
                                       implements ArrayEncoder {
         private Surrogate.Parser sgp;
+        private char[] buffer;
         private final char[] c2b;
         private final char[] c2bIndex;
         private final boolean isASCIICompatible;
@@ -244,6 +246,30 @@ public class SingleByte
                               src, sp, dst, dp);
         }
 
+        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
+            if (buffer == null) {
+                buffer = new char[1024];
+            }
+            CharBuffer tempCB = CharBuffer.wrap(buffer);
+            while(src.hasRemaining()) {
+                int position = src.position();
+                int length = Math.min(buffer.length, src.remaining());
+                tempCB.clear();
+                src.get(buffer, 0, length);
+                try {
+                    tempCB.flip();
+                    CoderResult cr = encodeArrayLoop(tempCB, dst);
+                    position += tempCB.position();
+                    if (cr != CoderResult.UNDERFLOW) {
+                        return cr;
+                    }
+                } finally {
+                    src.position(position);
+                }
+            }
+            return CoderResult.UNDERFLOW;
+        }
+
         private CoderResult encodeBufferLoop(CharBuffer src, ByteBuffer dst) {
             int mark = src.position();
             try {
@@ -271,11 +297,55 @@ public class SingleByte
             }
         }
 
+
+        private CoderResult encodeProducer(CharBuffer src,
+                                           sun.nio.RawCharacterProducer producer,
+                                           ByteBuffer dst)
+        {
+            if (isASCIICompatible()) {
+                while(src.hasRemaining()) {
+                    int copied = producer.copyAscii(dst, src.position(), Math.min(src.remaining(), dst.remaining()));
+                    int position = src.position() + copied;
+                    src.position(position);
+                    if (src.hasRemaining()) {
+                        try {
+                            char c = src.get();
+                            int b = encode(c);
+                            if (b == UNMAPPABLE_ENCODING) {
+                                if (Character.isSurrogate(c)) {
+                                    if (sgp == null)
+                                        sgp = new Surrogate.Parser();
+                                    if (sgp.parse(c, src) < 0)
+                                        return sgp.error();
+                                    return sgp.unmappableResult();
+                                }
+                                return CoderResult.unmappableForLength(1);
+                            }
+                            if (!dst.hasRemaining())
+                                return CoderResult.OVERFLOW;
+                            dst.put((byte)b);
+                            position++;
+                        } finally {
+                            src.position(position);
+                        }
+                    }
+                }
+                return CoderResult.UNDERFLOW;
+            }
+            if (dst.hasArray()) {
+                return encodeDstArrayLoop(src, dst);
+            }
+            return encodeBufferLoop(src, dst);
+        }
+
         protected CoderResult encodeLoop(CharBuffer src, ByteBuffer dst) {
-            if (src.hasArray() && dst.hasArray())
-                return encodeArrayLoop(src, dst);
-            else
-                return encodeBufferLoop(src, dst);
+            if (src instanceof sun.nio.RawCharacterProducer producer)
+                encodeProducer(producer, dst);
+
+            if (dst.hasArray())
+                return src.hasArray() ? encodeArrayLoop(src, dst) : encodeDstArrayLoop(src, dst);
+
+            return encodeBufferLoop(src, dst);
         }
 
         public final int encode(char ch) {

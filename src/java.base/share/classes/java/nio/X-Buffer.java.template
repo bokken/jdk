@@ -28,6 +28,8 @@
 package java.nio;
 
 #if[char]
+import jdk.internal.access.JavaLangAccess;
+import jdk.internal.access.SharedSecrets;
 import java.io.IOException;
 #end[char]
 import java.lang.ref.Reference;
@@ -306,6 +308,10 @@ public abstract sealed class $Type$Buffer
     // Cached array base offset
     private static final long ARRAY_BASE_OFFSET = UNSAFE.arrayBaseOffset($type$[].class);
 
+#if[char]
+    private static final JavaLangAccess JLA = SharedSecrets.getJavaLangAccess();
+#else[char]
+
     // These fields are declared here rather than in Heap-X-Buffer in order to
     // reduce the number of virtual method invocations needed to access these
     // values, which is especially costly when coding small buffers.
@@ -549,7 +555,8 @@ public abstract sealed class $Type$Buffer
      */
     public static CharBuffer wrap(CharSequence csq, int start, int end) {
         try {
-            return new StringCharBuffer(csq, start, end);
+            sun.nio.RawCharacterProducer producer = JLA.getCharacterProducer(csq);
+            return producer != null ? new CharProducerCharBuffer(csq, start, end, producer) : new StringCharBuffer(csq, start, end);
         } catch (IllegalArgumentException x) {
             throw new IndexOutOfBoundsException();
         }

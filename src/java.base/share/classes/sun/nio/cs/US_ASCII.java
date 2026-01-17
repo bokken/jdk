@@ -35,6 +35,8 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CharsetEncoder;
 import java.nio.charset.CoderResult;
 
+import static sun.nio.cs.CharsetMapping.UNMAPPABLE_ENCODING;
+
 public class US_ASCII
     extends Charset
     implements HistoricallyNamedCharset
@@ -208,13 +210,41 @@ public class US_ASCII
             }
         }
 
+        private CoderResult encodeProducer(CharBuffer src,
+                                           sun.nio.RawCharacterProducer producer,
+                                           ByteBuffer dst)
+        {
+            if (src.hasRemaining()) {
+                int copied = producer.copyAscii(dst, src.position(), Math.min(src.remaining(), dst.remaining()));
+                int position = src.position() + copied;
+                src.position(position);
+                if (src.hasRemaining()) {
+                    if (!dst.hasRemaining())
+                        return CoderResult.OVERFLOW;
+                    try {
+                        char c = src.get();
+                        assert c >= 0x80;
+                        if (sgp.parse(c, src) < 0)
+                            return sgp.error();
+                        return sgp.unmappableResult();
+                    } finally {
+                        src.position(position);
+                    }
+                }
+            }
+            return CoderResult.UNDERFLOW;
+        }
+
         protected CoderResult encodeLoop(CharBuffer src,
                                          ByteBuffer dst)
         {
+            if (src instanceof sun.nio.RawCharacterProducer producer)
+                encodeProducer(producer, dst);
+
             if (src.hasArray() && dst.hasArray())
                 return encodeArrayLoop(src, dst);
-            else
-                return encodeBufferLoop(src, dst);
+
+            return encodeBufferLoop(src, dst);
         }
 
     }

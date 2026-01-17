@@ -416,6 +416,8 @@ public final class UTF_8 extends Unicode {
 
     private static final class Encoder extends CharsetEncoder {
 
+        private char[] buffer;
+
         private Encoder(Charset cs) {
             super(cs, 1.1f, 3.0f);
         }
@@ -509,6 +511,30 @@ public final class UTF_8 extends Unicode {
             return CoderResult.UNDERFLOW;
         }
 
+        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
+            if (buffer == null) {
+                buffer = new char[1024];
+            }
+            CharBuffer tempCB = CharBuffer.wrap(buffer);
+            while(src.hasRemaining()) {
+                int position = src.position();
+                int length = Math.min(buffer.length, src.remaining());
+                tempCB.clear();
+                src.get(buffer, 0, length);
+                try {
+                    tempCB.flip();
+                    CoderResult cr = encodeArrayLoop(tempCB, dst);
+                    position += tempCB.position();
+                    if (cr != CoderResult.UNDERFLOW) {
+                        return cr;
+                    }
+                } finally {
+                    src.position(position);
+                }
+            }
+            return CoderResult.UNDERFLOW;
+        }
+
         private CoderResult encodeBufferLoop(CharBuffer src,
                                              ByteBuffer dst)
         {
@@ -556,13 +582,37 @@ public final class UTF_8 extends Unicode {
             return CoderResult.UNDERFLOW;
         }
 
+        private CoderResult encodeProducer(CharBuffer src,
+                                           sun.nio.RawCharacterProducer producer,
+                                           ByteBuffer dst)
+        {
+            
+            int copied = producer.copyAscii(dst, src.position(), Math.min(src.remaining(), dst.remaining());
+            int newPosition = src.position() + copied;
+            src.position(newPosition);
+            if (!src.hasRemaining()) {
+                return CoderResult.UNDERFLOW;
+            }
+
+            if (!dst.hasRemaining())
+                return CoderResult.OVERFLOW;
+
+            if (dst.hasArray()) {
+                return encodeDstArrayLoop(src, dst);
+            }
+            return encodeBufferLoop(src, dst);
+        }
+
         protected final CoderResult encodeLoop(CharBuffer src,
                                                ByteBuffer dst)
         {
-            if (src.hasArray() && dst.hasArray())
-                return encodeArrayLoop(src, dst);
-            else
-                return encodeBufferLoop(src, dst);
+            if (src instanceof sun.nio.RawCharacterProducer producer)
+                encodeProducer(producer, dst);
+
+            if (dst.hasArray())
+                return src.hasArray() ? encodeArrayLoop(src, dst) : encodeDstArrayLoop(src, dst);
+
+            return encodeBufferLoop(src, dst);
         }
 
     }

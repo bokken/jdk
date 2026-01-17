@@ -42,6 +42,7 @@ import java.lang.module.ModuleDescriptor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.nio.channels.Channel;
 import java.nio.channels.spi.SelectorProvider;
 import java.nio.charset.CharacterCodingException;
@@ -55,6 +56,8 @@ import java.util.Properties;
 import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
@@ -1991,10 +1994,86 @@ public final class System {
         // system is fully initialized
         VM.initLevel(4);
     }
+    
+
+
+    private static final class RawCharacterProducerImpl<O extends CharSequence> implements sun.nio.RawCharacterProducer {
+        private final O object;
+        private final Predicate<O> isLatin1;
+        private final Function<O, byte[]> value;
+        
+        RawCharacterProducerImpl(O source, Predicate<O> isLatin1, Function<O, byte[]> value) {
+            this.object = source;
+            this.isLatin1 = isLatin1;
+            this.value = value;
+        }
+
+        @Override
+        public int copyAscii(ByteBuffer target, int srcOffset, int len) {
+            //TODO verify srcOffset and len
+            int actualLen = Math.min(len, target.remaining());
+            byte[] val = value.apply(object);
+            if (isLatin1.test(object)) {
+                int asciiCnt = StringCoding.countPositives(val, srcOffset, actualLen);
+                if (asciiCnt > 0) {
+                    target.put(val, srcOffset, asciiCnt);
+                }
+                return asciiCnt;
+            }
+            //is this optimized anywhere?
+            int i=0;
+            for (; i<actualLen; ++i) {
+                char c = StringUTF16.getChar(val, i + srcOffset);
+                if (c >= 0x80)
+                    break;
+                target.put((byte)c);
+            }
+            return i;
+        }
+
+        @Override
+        public int copyLatin1(ByteBuffer target, int srcOffset, int len) {
+            //TODO verify srcOffset and len
+            int actualLen = Math.min(len, target.remaining());
+            byte[] val = value.apply(object);
+            if (isLatin1.test(object)) {
+                target.put(val, srcOffset, actualLen);
+                return actualLen;
+            }
+            if (target.hasArray()) {
+                byte[] dst = target.array();
+                int dp = target.arrayOffset() + target.position();
+                return StringCoding.encodeISOArray(val, srcOffset, dst, dp, actualLen);
+            }
+            // TODO: ideally this can also be made intrinsic
+            int i=0;
+            for (; i<actualLen; ++i) {
+                char c = StringUTF16.getChar(val, i + srcOffset);
+                if (c > '\u00FF')
+                    break;
+                target.put((byte)c);
+            }
+            return i;
+        }
+    }
 
     private static void setJavaLangAccess() {
         // Allow privileged classes outside of java.lang
         SharedSecrets.setJavaLangAccess(new JavaLangAccess() {
+
+            public sun.nio.RawCharacterProducer getCharacterProducer(CharSequence seq) {
+                if (seq instanceof String string) {
+                    return new RawCharacterProducerImpl<String>(string, String::isLatin1, String::value);
+                }
+                if (seq instanceof AbstractStringBuilder asb) {
+                    return new RawCharacterProducerImpl<AbstractStringBuilder>(asb, AbstractStringBuilder::isLatin1, AbstractStringBuilder::getValue);
+                }
+                if (seq instanceof sun.nio.RawCharacterProducer producer) {
+                    return producer;
+                }
+                return null;
+            }
+
             public List<Method> getDeclaredPublicMethods(Class<?> klass, String name, Class<?>... parameterTypes) {
                 return klass.getDeclaredPublicMethods(name, parameterTypes);
             }

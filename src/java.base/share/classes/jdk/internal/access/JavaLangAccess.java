@@ -55,10 +55,18 @@ import jdk.internal.vm.Continuation;
 import jdk.internal.vm.ContinuationScope;
 import jdk.internal.vm.StackableScope;
 import jdk.internal.vm.ThreadContainer;
-import sun.reflect.annotation.AnnotationType;
 import sun.nio.ch.Interruptible;
+import sun.reflect.annotation.AnnotationType;
 
 public interface JavaLangAccess {
+
+    /**
+     * Optionally provides optimal/direct access to consume the raw binary character representation.
+     * @param csq The char sequence to 
+     * @return An instance capable of producing the raw binary representation of the characters. 
+     *      Will return {@code null} if raw binary characters cannot be obtained from <i>csq</i>.
+     */
+    sun.nio.RawCharacterProducer getCharacterProducer(CharSequence csq);
 
     /**
      * Returns the list of {@code Method} objects for the declared public

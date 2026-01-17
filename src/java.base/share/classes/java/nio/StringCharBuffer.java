@@ -29,8 +29,9 @@ import java.util.Objects;
 
 // ## If the sequence is a string, use reflection to share its array
 
-final class StringCharBuffer                                  // package-private
+sealed class StringCharBuffer                                  // package-private
     extends CharBuffer
+    permits CharProducerCharBuffer
 {
     CharSequence str;
 
