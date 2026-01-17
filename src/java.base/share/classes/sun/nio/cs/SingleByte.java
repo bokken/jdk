@@ -340,7 +340,7 @@ public class SingleByte
 
         protected CoderResult encodeLoop(CharBuffer src, ByteBuffer dst) {
             if (src instanceof sun.nio.RawCharacterProducer producer)
-                encodeProducer(producer, dst);
+                encodeProducer(src, producer, dst);
 
             if (dst.hasArray())
                 return src.hasArray() ? encodeArrayLoop(src, dst) : encodeDstArrayLoop(src, dst);

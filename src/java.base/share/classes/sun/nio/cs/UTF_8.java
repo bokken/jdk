@@ -607,7 +607,7 @@ public final class UTF_8 extends Unicode {
                                                ByteBuffer dst)
         {
             if (src instanceof sun.nio.RawCharacterProducer producer)
-                encodeProducer(producer, dst);
+                encodeProducer(src, producer, dst);
 
             if (dst.hasArray())
                 return src.hasArray() ? encodeArrayLoop(src, dst) : encodeDstArrayLoop(src, dst);
