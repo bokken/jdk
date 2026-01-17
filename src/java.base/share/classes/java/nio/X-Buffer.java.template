@@ -310,7 +310,7 @@ public abstract sealed class $Type$Buffer
 
 #if[char]
     private static final JavaLangAccess JLA = SharedSecrets.getJavaLangAccess();
-#else[char]
+#end[char]
 
     // These fields are declared here rather than in Heap-X-Buffer in order to
     // reduce the number of virtual method invocations needed to access these

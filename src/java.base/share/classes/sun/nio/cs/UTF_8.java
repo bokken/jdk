@@ -587,7 +587,7 @@ public final class UTF_8 extends Unicode {
                                            ByteBuffer dst)
         {
             
-            int copied = producer.copyAscii(dst, src.position(), Math.min(src.remaining(), dst.remaining());
+            int copied = producer.copyAscii(dst, src.position(), Math.min(src.remaining(), dst.remaining()));
             int newPosition = src.position() + copied;
             src.position(newPosition);
             if (!src.hasRemaining()) {
