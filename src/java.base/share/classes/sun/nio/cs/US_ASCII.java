@@ -239,7 +239,7 @@ public class US_ASCII
                                          ByteBuffer dst)
         {
             if (src instanceof sun.nio.RawCharacterProducer producer)
-                encodeProducer(src, producer, dst);
+                return encodeProducer(src, producer, dst);
 
             if (src.hasArray() && dst.hasArray())
                 return encodeArrayLoop(src, dst);

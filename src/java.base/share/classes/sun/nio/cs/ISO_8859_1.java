@@ -273,9 +273,11 @@ public class ISO_8859_1
                                          ByteBuffer dst)
         {
             if (src instanceof sun.nio.RawCharacterProducer producer)
-                encodeProducer(src, producer, dst);
+                return encodeProducer(src, producer, dst);
+
             if (src.hasArray() && dst.hasArray())
                 return encodeArrayLoop(src, dst);
+
             return encodeBufferLoop(src, dst);
         }
     }
