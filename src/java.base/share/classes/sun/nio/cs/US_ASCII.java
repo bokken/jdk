@@ -215,7 +215,7 @@ public class US_ASCII
                                            ByteBuffer dst)
         {
             if (src.hasRemaining()) {
-                int copied = producer.copyAscii(dst, src.position(), Math.min(src.remaining(), dst.remaining()));
+                int copied = producer.copyAscii(dst, 0, Math.min(src.remaining(), dst.remaining()));
                 int position = src.position() + copied;
                 src.position(position);
                 if (src.hasRemaining()) {

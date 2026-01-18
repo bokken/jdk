@@ -245,7 +245,7 @@ public class ISO_8859_1
         {
             final CoderResult result;
             while (src.hasRemaining()) {
-                int copied = producer.copyLatin1(dst, src.position(), Math.min(src.remaining(), dst.remaining()));
+                int copied = producer.copyLatin1(dst, 0, Math.min(src.remaining(), dst.remaining()));
                 int newPosition = src.position() + copied;
                 src.position(newPosition);
                 if (src.hasRemaining()) {

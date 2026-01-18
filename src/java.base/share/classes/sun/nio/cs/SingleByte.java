@@ -304,7 +304,7 @@ public class SingleByte
         {
             if (isASCIICompatible()) {
                 while(src.hasRemaining()) {
-                    int copied = producer.copyAscii(dst, src.position(), Math.min(src.remaining(), dst.remaining()));
+                    int copied = producer.copyAscii(dst, 0, Math.min(src.remaining(), dst.remaining()));
                     int position = src.position() + copied;
                     src.position(position);
                     if (src.hasRemaining()) {
