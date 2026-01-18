@@ -398,9 +398,6 @@ abstract sealed class AbstractStringBuilder implements Appendable, CharSequence
             Arrays.fill(value, count << coder, newLength << coder, (byte)0);
         } else if (count > newLength) {
             maybeLatin1 = true;
-            if (COMPACT_STRINGS && newLength == 0) {
-                this.coder = LATIN1;
-            }
         }
         this.count = newLength;
         this.value = value;

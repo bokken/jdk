@@ -2055,6 +2055,11 @@ public final class System {
             }
             return i;
         }
+        
+        @Override
+        public ByteBuffer latin1Bytes() {
+            return isLatin1.test(object) ? ByteBuffer.wrap(value.apply(object), 0, object.length()).asReadOnlyBuffer() : null;
+        }
     }
 
     private static void setJavaLangAccess() {

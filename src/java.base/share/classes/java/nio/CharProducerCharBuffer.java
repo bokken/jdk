@@ -20,5 +20,17 @@ final class CharProducerCharBuffer extends StringCharBuffer implements sun.nio.R
         int position = offset + position();
         return producer.copyLatin1(target, srcOffset + position, Math.min(len, remaining()));
     }
+    
+    @Override
+    public ByteBuffer latin1Bytes() {
+        ByteBuffer latin1Bytes = producer.latin1Bytes();
+        if (latin1Bytes != null) {
+            int position = offset + position() + latin1Bytes.position();
+            latin1Bytes.position(position);
+            latin1Bytes.limit(position + remaining());
+            return latin1Bytes;
+        }
+        return null;
+    }
     //TODO override slice and duplicate
 }
