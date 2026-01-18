@@ -518,14 +518,22 @@ public final class UTF_8 extends Unicode {
             CharBuffer tempCB = CharBuffer.wrap(buffer);
             while(src.hasRemaining()) {
                 int position = src.position();
-                int length = Math.min(buffer.length, src.remaining());
-                tempCB.clear();
+                int length = Math.min(tempCB.remaining(), src.remaining());
                 src.get(buffer, 0, length);
                 try {
-                    tempCB.flip();
+                    tempCB.limit(length);
                     CoderResult cr = encodeArrayLoop(tempCB, dst);
                     position += tempCB.position();
-                    if (cr != CoderResult.UNDERFLOW) {
+                    if (cr == CoderResult.UNDERFLOW) {
+                        int remaining = tempCB.remaining();
+                        if (remaining > 0) {
+                            tempCB.get(buffer, 0, tempCB.remaining());
+                            tempCB.clear();
+                            tempCB.position(remaining);
+                        } else {
+                            tempCB.clear();
+                        }
+                    } else {
                         return cr;
                     }
                 } finally {
