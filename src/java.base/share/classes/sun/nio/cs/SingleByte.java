@@ -253,24 +253,17 @@ public class SingleByte
             CharBuffer tempCB = CharBuffer.wrap(buffer);
             while(src.hasRemaining()) {
                 int position = src.position();
-                int length = Math.min(tempCB.remaining(), src.remaining());
+                int length = Math.min(buffer.length, src.remaining());
                 src.get(buffer, 0, length);
                 try {
                     tempCB.limit(length);
                     CoderResult cr = encodeArrayLoop(tempCB, dst);
-                    position += tempCB.position();
-                    if (cr == CoderResult.UNDERFLOW) {
-                        int remaining = tempCB.remaining();
-                        if (remaining > 0) {
-                            tempCB.get(buffer, 0, tempCB.remaining());
-                            tempCB.clear();
-                            tempCB.position(remaining);
-                        } else {
-                            tempCB.clear();
-                        }
-                    } else {
+                    int remaining = tempCB.remaining();
+                    position = src.position() - remaining;
+                    if (cr != CoderResult.UNDERFLOW)
                         return cr;
-                    }
+
+                    tempCB.clear();
                 } finally {
                     src.position(position);
                 }
