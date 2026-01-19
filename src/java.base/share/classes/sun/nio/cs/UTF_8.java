@@ -587,8 +587,7 @@ public final class UTF_8 extends Unicode {
                                            sun.nio.RawCharacterProducer producer,
                                            ByteBuffer dst)
         {
-            
-            int copied = producer.copyAscii(dst, 0, Math.min(src.remaining(), dst.remaining()));
+            int copied = producer.copyUTF8(dst, 0, Math.min(src.remaining(), dst.remaining()));
             int newPosition = src.position() + copied;
             src.position(newPosition);
             if (!src.hasRemaining()) {
@@ -598,10 +597,23 @@ public final class UTF_8 extends Unicode {
             if (!dst.hasRemaining())
                 return CoderResult.OVERFLOW;
 
-            if (dst.hasArray()) {
-                return encodeDstArrayLoop(src, dst);
-            }
-            return encodeBufferLoop(src, dst);
+            char c = src.get();
+            if (Character.isSurrogate(c)) {
+                int mark = src.position();
+                if (sgp == null)
+                    sgp = new Surrogate.Parser();
+                int uc = sgp.parse(c, src);
+                if (uc < 0) {
+                    src.position(mark);
+                    return sgp.error();
+                }
+                assert dst.remaining() < 4;
+                return overflow(src, mark);
+            } 
+
+            // this could be a 2 or 3 byte encoded char
+            assert dst.remaining() < 2;
+            return CoderResult.OVERFLOW;
         }
 
         protected final CoderResult encodeLoop(CharBuffer src,

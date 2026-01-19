@@ -48,6 +48,7 @@ import java.nio.channels.spi.SelectorProvider;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.security.ProtectionDomain;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -1994,29 +1995,34 @@ public final class System {
         // system is fully initialized
         VM.initLevel(4);
     }
-    
 
 
-    private static final class RawCharacterProducerImpl<O extends CharSequence> implements sun.nio.RawCharacterProducer {
-        private final O object;
-        private final Predicate<O> isLatin1;
-        private final Function<O, byte[]> value;
+
+    private static final class StringRawCharacterProducer implements sun.nio.RawCharacterProducer {
+        private final String string;
         
-        RawCharacterProducerImpl(O source, Predicate<O> isLatin1, Function<O, byte[]> value) {
-            this.object = source;
-            this.isLatin1 = isLatin1;
-            this.value = value;
+        StringRawCharacterProducer(String string) {
+            this.string = string;
         }
 
         @Override
         public int copyAscii(ByteBuffer target, int srcOffset, int len) {
             //TODO verify srcOffset and len
             int actualLen = Math.min(len, target.remaining());
-            byte[] val = value.apply(object);
-            if (isLatin1.test(object)) {
+            byte[] val = string.value();
+            if (string.isLatin1()) {
                 int asciiCnt = StringCoding.countPositives(val, srcOffset, actualLen);
                 if (asciiCnt > 0) {
                     target.put(val, srcOffset, asciiCnt);
+                }
+                // count positives might return an index actually less than where the first negative value is
+                while (asciiCnt < actualLen) {
+                    byte c = val[asciiCnt];
+                    if (c < 0) {
+                        break;
+                    }
+                    target.put(c);
+                    ++asciiCnt;
                 }
                 return asciiCnt;
             }
@@ -2035,8 +2041,8 @@ public final class System {
         public int copyLatin1(ByteBuffer target, int srcOffset, int len) {
             //TODO verify srcOffset and len
             int actualLen = Math.min(len, target.remaining());
-            byte[] val = value.apply(object);
-            if (isLatin1.test(object)) {
+            byte[] val = string.value();
+            if (string.isLatin1()) {
                 target.put(val, srcOffset, actualLen);
                 return actualLen;
             }
@@ -2055,10 +2061,236 @@ public final class System {
             }
             return i;
         }
-        
+
         @Override
-        public ByteBuffer latin1Bytes() {
-            return isLatin1.test(object) ? ByteBuffer.wrap(value.apply(object), 0, object.length()).asReadOnlyBuffer() : null;
+        public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
+            //TODO verify srcOffset and len
+            int actualLen = Math.min(len, target.remaining());
+            byte[] val = string.value();
+            if (string.isLatin1()) {
+                int asciiCnt = StringCoding.countPositives(val, srcOffset, actualLen);
+                if (asciiCnt > 0) {
+                    target.put(val, srcOffset, asciiCnt);
+                }
+                int remaining = target.remaining();
+                for (int i = asciiCnt + srcOffset, j = actualLen + srcOffset; i < j; ++i) {
+                    byte c = val[i];
+                    if (c < 0 && remaining >= 2) {
+                        target.put((byte) (0xc0 | ((c & 0xff) >> 6)));
+                        target.put((byte) (0x80 | (c & 0x3f)));
+                        remaining -= 2;
+                    } else if (remaining >= 1) {
+                        target.put(c);
+                        --remaining;
+                    } else {
+                        break;
+                    }
+                    ++asciiCnt;
+                }
+                return asciiCnt;
+            }
+            return encodeUTF8_UTF16(val, target, srcOffset, actualLen);
+        }
+
+        private int encodeUTF8_UTF16(byte[] val, ByteBuffer target, int srcOffset, int len) {
+            int sp = srcOffset;
+            int sl = sp + len;
+
+            while (sp < sl) {
+                // ascii fast loop;
+                char c = StringUTF16.getChar(val, sp);
+                if (c >= '\u0080') {
+                    break;
+                }
+                target.put((byte)c);
+                sp++;
+            }
+            int remaining = target.remaining();
+            while (sp < sl) {
+                char c = StringUTF16.getChar(val, sp++);
+                if (c < 0x80 && remaining >= 1) {
+                    target.put((byte)c);
+                    --remaining;
+                } else if (c < 0x800 && remaining >= 2) {
+                    target.put((byte)(0xc0 | (c >> 6)));
+                    target.put((byte)(0x80 | (c & 0x3f)));
+                    remaining -= 2;
+                } else if (Character.isSurrogate(c)) {
+                    int uc = -1;
+                    char c2;
+                    if (Character.isHighSurrogate(c) && sp < sl &&
+                            Character.isLowSurrogate(c2 = StringUTF16.getChar(val, sp))) {
+                        uc = Character.toCodePoint(c, c2);
+                    }
+                    if (uc < 0 || remaining <= 4) {
+                        break;
+                    }
+
+                    target.put((byte)(0xf0 | (uc >> 18)));
+                    target.put((byte)(0x80 | ((uc >> 12) & 0x3f)));
+                    target.put((byte)(0x80 | ((uc >>  6) & 0x3f)));
+                    target.put((byte)(0x80 | (uc & 0x3f)));
+                    sp++;  // 2 chars
+                    remaining -= 4;
+                } else if (remaining >= 3) {
+                    // 3 bytes, 16 bits
+                    target.put((byte)(0xe0 | (c >> 12)));
+                    target.put((byte)(0x80 | ((c >>  6) & 0x3f)));
+                    target.put((byte)(0x80 | (c & 0x3f)));
+                    remaining -= 3;
+                } else {
+                    break;
+                }
+            }
+            return sp - srcOffset;
+        }
+    }
+    
+    private static final class ASBRawCharacterProducer implements sun.nio.RawCharacterProducer {
+        private final AbstractStringBuilder asb;
+        
+        ASBRawCharacterProducer(AbstractStringBuilder asb) {
+            this.asb = asb;
+        }
+
+        @Override
+        public int copyAscii(ByteBuffer target, int srcOffset, int len) {
+            //TODO verify srcOffset and len
+            int actualLen = Math.min(len, target.remaining());
+            byte[] val = asb.value;
+            if (asb.isLatin1()) {
+                int asciiCnt = StringCoding.countPositives(val, srcOffset, actualLen);
+                if (asciiCnt > 0) {
+                    target.put(val, srcOffset, asciiCnt);
+                }
+                // count positives might return an index actually less than where the first negative value is
+                while (asciiCnt < actualLen) {
+                    byte c = val[asciiCnt];
+                    if (c < 0) {
+                        break;
+                    }
+                    target.put(c);
+                    ++asciiCnt;
+                }
+                return asciiCnt;
+            }
+            //is this optimized anywhere?
+            int i=0;
+            for (; i<actualLen; ++i) {
+                char c = StringUTF16.getChar(val, i + srcOffset);
+                if (c >= 0x80)
+                    break;
+                target.put((byte)c);
+            }
+            return i;
+        }
+
+        @Override
+        public int copyLatin1(ByteBuffer target, int srcOffset, int len) {
+            //TODO verify srcOffset and len
+            int actualLen = Math.min(len, target.remaining());
+            byte[] val = asb.value;
+            if (asb.isLatin1()) {
+                target.put(val, srcOffset, actualLen);
+                return actualLen;
+            }
+            if (target.hasArray()) {
+                byte[] dst = target.array();
+                int dp = target.arrayOffset() + target.position();
+                return StringCoding.encodeISOArray(val, srcOffset, dst, dp, actualLen);
+            }
+            // TODO: ideally this can also be made intrinsic
+            int i=0;
+            for (; i<actualLen; ++i) {
+                char c = StringUTF16.getChar(val, i + srcOffset);
+                if (c > '\u00FF')
+                    break;
+                target.put((byte)c);
+            }
+            return i;
+        }
+
+        @Override
+        public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
+            //TODO verify srcOffset and len
+            int actualLen = Math.min(len, target.remaining());
+            byte[] val = asb.value;
+            if (asb.isLatin1()) {
+                int asciiCnt = StringCoding.countPositives(val, srcOffset, actualLen);
+                if (asciiCnt > 0) {
+                    target.put(val, srcOffset, asciiCnt);
+                }
+                int remaining = target.remaining();
+                for (int i = asciiCnt + srcOffset, j = actualLen + srcOffset; i < j; ++i) {
+                    byte c = val[i];
+                    if (c < 0 && remaining >= 2) {
+                        target.put((byte) (0xc0 | ((c & 0xff) >> 6)));
+                        target.put((byte) (0x80 | (c & 0x3f)));
+                        remaining -= 2;
+                    } else if (remaining >= 1) {
+                        target.put(c);
+                        --remaining;
+                    } else {
+                        break;
+                    }
+                    ++asciiCnt;
+                }
+                return asciiCnt;
+            }
+            return encodeUTF8_UTF16(val, target, srcOffset, actualLen);
+        }
+
+        private int encodeUTF8_UTF16(byte[] val, ByteBuffer target, int srcOffset, int len) {
+            int sp = srcOffset;
+            int sl = sp + len;
+
+            while (sp < sl) {
+                // ascii fast loop;
+                char c = StringUTF16.getChar(val, sp);
+                if (c >= '\u0080') {
+                    break;
+                }
+                target.put((byte)c);
+                sp++;
+            }
+            int remaining = target.remaining();
+            while (sp < sl) {
+                char c = StringUTF16.getChar(val, sp++);
+                if (c < 0x80 && remaining >= 1) {
+                    target.put((byte)c);
+                    --remaining;
+                } else if (c < 0x800 && remaining >= 2) {
+                    target.put((byte)(0xc0 | (c >> 6)));
+                    target.put((byte)(0x80 | (c & 0x3f)));
+                    remaining -= 2;
+                } else if (Character.isSurrogate(c)) {
+                    int uc = -1;
+                    char c2;
+                    if (Character.isHighSurrogate(c) && sp < sl &&
+                            Character.isLowSurrogate(c2 = StringUTF16.getChar(val, sp))) {
+                        uc = Character.toCodePoint(c, c2);
+                    }
+                    if (uc < 0 || remaining <= 4) {
+                        break;
+                    }
+
+                    target.put((byte)(0xf0 | (uc >> 18)));
+                    target.put((byte)(0x80 | ((uc >> 12) & 0x3f)));
+                    target.put((byte)(0x80 | ((uc >>  6) & 0x3f)));
+                    target.put((byte)(0x80 | (uc & 0x3f)));
+                    sp++;  // 2 chars
+                    remaining -= 4;
+                } else if (remaining >= 3) {
+                    // 3 bytes, 16 bits
+                    target.put((byte)(0xe0 | (c >> 12)));
+                    target.put((byte)(0x80 | ((c >>  6) & 0x3f)));
+                    target.put((byte)(0x80 | (c & 0x3f)));
+                    remaining -= 3;
+                } else {
+                    break;
+                }
+            }
+            return sp - srcOffset;
         }
     }
 
@@ -2068,10 +2300,10 @@ public final class System {
 
             public sun.nio.RawCharacterProducer getCharacterProducer(CharSequence seq) {
                 if (seq instanceof String string) {
-                    return new RawCharacterProducerImpl<String>(string, String::isLatin1, String::value);
+                    return new StringRawCharacterProducer(string);
                 }
                 if (seq instanceof AbstractStringBuilder asb) {
-                    return new RawCharacterProducerImpl<AbstractStringBuilder>(asb, AbstractStringBuilder::isLatin1, AbstractStringBuilder::getValue);
+                    return new ASBRawCharacterProducer(asb);
                 }
                 if (seq instanceof sun.nio.RawCharacterProducer producer) {
                     return producer;
