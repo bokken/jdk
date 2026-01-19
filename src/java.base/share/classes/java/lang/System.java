@@ -43,6 +43,7 @@ import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.channels.Channel;
 import java.nio.channels.spi.SelectorProvider;
 import java.nio.charset.CharacterCodingException;
@@ -79,6 +80,7 @@ import jdk.internal.logger.LoggerFinderLoader;
 import jdk.internal.logger.LazyLoggers;
 import jdk.internal.logger.LocalizedLoggerWrapper;
 import jdk.internal.misc.VM;
+import jdk.internal.util.ByteArray;
 import jdk.internal.util.SystemProps;
 import jdk.internal.vm.Continuation;
 import jdk.internal.vm.ContinuationScope;
@@ -2017,7 +2019,7 @@ public final class System {
                 }
                 // count positives might return an index actually less than where the first negative value is
                 while (asciiCnt < actualLen) {
-                    byte c = val[asciiCnt];
+                    byte c = val[srcOffset + asciiCnt];
                     if (c < 0) {
                         break;
                     }
@@ -2145,6 +2147,8 @@ public final class System {
             return sp - srcOffset;
         }
     }
+
+    private static final long NON_ASCII_MASK = 0x8080808080808080L;
     
     private static final class ASBRawCharacterProducer implements sun.nio.RawCharacterProducer {
         private final AbstractStringBuilder asb;
@@ -2165,7 +2169,7 @@ public final class System {
                 }
                 // count positives might return an index actually less than where the first negative value is
                 while (asciiCnt < actualLen) {
-                    byte c = val[asciiCnt];
+                    byte c = val[srcOffset + asciiCnt];
                     if (c < 0) {
                         break;
                     }
@@ -2210,32 +2214,218 @@ public final class System {
             return i;
         }
 
+        private static int copy8Latin1ByteUTF8(byte[] val, int offset, ByteBuffer target, int remaining) {
+            // assert target.remaining() >= 16;
+            // assert val.length >= offset + 8;
+            byte c = val[offset];
+            if (c < 0) {
+                if (remaining == 1) {
+                    return 0;
+                }
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+                remaining -= 2;
+            } else {
+                target.put(c);
+                --remaining;
+            }
+            
+            c = val[offset + 1];
+            if (c < 0 && remaining >= 2) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+                remaining -= 2;
+            } else if (remaining >= 1) {
+                target.put(c);
+                --remaining;
+            } else {
+                return 1;
+            }
+            
+            c = val[offset + 2];
+            if (c < 0 && remaining >= 2) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+                remaining -= 2;
+            } else if (remaining >= 1) {
+                target.put(c);
+                --remaining;
+            } else {
+                return 2;
+            }
+            
+            c = val[offset + 3];
+            if (c < 0 && remaining >= 2) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+                remaining -= 2;
+            } else if (remaining >= 1) {
+                target.put(c);
+                --remaining;
+            } else {
+                return 3;
+            }
+            
+            c = val[offset + 4];
+            if (c < 0 && remaining >= 2) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+                remaining -= 2;
+            } else if (remaining >= 1) {
+                target.put(c);
+                --remaining;
+            } else {
+                return 4;
+            }
+            
+            c = val[offset + 5];
+            if (c < 0 && remaining >= 2) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+                remaining -= 2;
+            } else if (remaining >= 1) {
+                target.put(c);
+                --remaining;
+            } else {
+                return 5;
+            }
+            
+            c = val[offset + 6];
+            if (c < 0 && remaining >= 2) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+                remaining -= 2;
+            } else if (remaining >= 1) {
+                target.put(c);
+                --remaining;
+            } else {
+                return 6;
+            }
+            
+            c = val[offset + 7];
+            if (c < 0 && remaining >= 2) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+            } else if (remaining >= 1) {
+                target.put(c);
+            } else {
+                return 7;
+            }
+
+            return 8;
+        }
+
+        private static void copy8Latin1ByteUTF8NoRemainingCheck(byte[] val, int offset, ByteBuffer target) {
+            // assert target.remaining() >= 16;
+            // assert val.length >= offset + 8;
+            byte c = val[offset];
+            if (c < 0) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+            } else {
+                target.put(c);
+            }
+
+            c = val[offset + 1];
+            if (c < 0) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+            } else {
+                target.put(c);
+            }
+
+            c = val[offset + 2];
+            if (c < 0) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+            } else {
+                target.put(c);
+            }
+
+            c = val[offset + 3];
+            if (c < 0) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+            } else {
+                target.put(c);
+            }
+
+            c = val[offset + 4];
+            if (c < 0) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+            } else {
+                target.put(c);
+            }
+
+            c = val[offset + 5];
+            if (c < 0) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+            } else {
+                target.put(c);
+            }
+
+            c = val[offset + 6];
+            if (c < 0) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+            } else {
+                target.put(c);
+            }
+
+            c = val[offset + 7];
+            if (c < 0) {
+                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                        | ((0x80 | (c & 0x3F)) & 0xFF)));
+            } else {
+                target.put(c);
+            }
+        }
+
         @Override
         public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
             //TODO verify srcOffset and len
             int actualLen = Math.min(len, target.remaining());
             byte[] val = asb.value;
             if (asb.isLatin1()) {
-                int asciiCnt = StringCoding.countPositives(val, srcOffset, actualLen);
-                if (asciiCnt > 0) {
-                    target.put(val, srcOffset, asciiCnt);
-                }
                 int remaining = target.remaining();
-                for (int i = asciiCnt + srcOffset, j = actualLen + srcOffset; i < j; ++i) {
-                    byte c = val[i];
-                    if (c < 0 && remaining >= 2) {
-                        target.put((byte) (0xc0 | ((c & 0xff) >> 6)));
-                        target.put((byte) (0x80 | (c & 0x3f)));
-                        remaining -= 2;
-                    } else if (remaining >= 1) {
-                        target.put(c);
-                        --remaining;
-                    } else {
-                        break;
+                int i=srcOffset;
+                ByteOrder order = target.order();
+                target.order(ByteOrder.BIG_ENDIAN);
+                try {
+                    for (int j = srcOffset + actualLen - 7; i < j && remaining >= 8; i += 8) {
+                        long bytes = ByteArray.getLong(val, i);
+                        if ((bytes & NON_ASCII_MASK) == 0L) {
+                            target.putLong(bytes);
+                            remaining -= 8;
+                        } else {
+                            if (remaining >= 16) {
+                                copy8Latin1ByteUTF8NoRemainingCheck(val, i, target);
+                            } else {
+                                int copied = copy8Latin1ByteUTF8(val, i, target, remaining);
+                                if (copied != 8) {
+                                    return (i + copied) - srcOffset;
+                                }
+                            }
+                            remaining = target.remaining();
+                        }
                     }
-                    ++asciiCnt;
+                    for (int j = actualLen + srcOffset; i < j && remaining > 0; ++i) {
+                        byte c = val[i];
+                        if (c < 0 && remaining >= 2) {
+                            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                                    | ((0x80 | (c & 0x3F)) & 0xFF)));
+                            remaining -= 2;
+                        } else {
+                            target.put(c);
+                            --remaining;
+                        }
+                    }
+                } finally {
+                    target.order(order);
                 }
-                return asciiCnt;
+                return i - srcOffset;
             }
             return encodeUTF8_UTF16(val, target, srcOffset, actualLen);
         }
