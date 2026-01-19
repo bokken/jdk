@@ -2105,7 +2105,8 @@ public final class System {
 
         private static int copyLatin1ToUTF8(byte[] val, int srcIdx, int len, ByteBuffer target) {
             int remaining = target.remaining();
-            for (int i = srcIdx, j = srcIdx + len; i < j; ++i) {
+            int i = srcIdx;
+            for (int j = srcIdx + len; i < j; ++i) {
                 byte c = val[i];
                 if (c < 0 && remaining >= 2) {
                     target.put((byte) (0xc0 | ((c & 0xff) >> 6)));
@@ -2118,7 +2119,7 @@ public final class System {
                     break;
                 }
             }
-            return i;
+            return i - srcIdx;
         }
     }
 
