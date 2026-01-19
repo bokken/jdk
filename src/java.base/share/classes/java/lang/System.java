@@ -2073,78 +2073,52 @@ public final class System {
                 int asciiCnt = StringCoding.countPositives(val, srcOffset, actualLen);
                 if (asciiCnt > 0) {
                     target.put(val, srcOffset, asciiCnt);
-                }
-                int remaining = target.remaining();
-                for (int i = asciiCnt + srcOffset, j = actualLen + srcOffset; i < j; ++i) {
-                    byte c = val[i];
-                    if (c < 0 && remaining >= 2) {
-                        target.put((byte) (0xc0 | ((c & 0xff) >> 6)));
-                        target.put((byte) (0x80 | (c & 0x3f)));
-                        remaining -= 2;
-                    } else if (remaining >= 1) {
-                        target.put(c);
-                        --remaining;
-                    } else {
-                        break;
+                    if (asciiCnt == actualLen) {
+                        return asciiCnt;
                     }
-                    ++asciiCnt;
                 }
-                return asciiCnt;
+                if (target.hasArray()) {
+                    byte[] dst = target.array();
+                    int dp = target.position() + target.arrayOffset();
+                    int remaining = target.remaining();
+                    for (int i = asciiCnt + srcOffset, j = actualLen + srcOffset; i < j; ++i) {
+                        byte c = val[i];
+                        if (c < 0 && remaining >= 2) {
+                            dst[dp++] = (byte) (0xc0 | ((c & 0xff) >> 6));
+                            dst[dp++] = (byte) (0x80 | (c & 0x3f));
+                            remaining -= 2;
+                        } else if (remaining >= 1) {
+                            dst[dp++] = c;
+                            --remaining;
+                        } else {
+                            break;
+                        }
+                        ++asciiCnt;
+                    }
+                    target.position(target.limit() - remaining);
+                    return asciiCnt;
+                }
+                return asciiCnt + copyLatin1ToUTF8(val, asciiCnt + srcOffset, actualLen - asciiCnt, target);
             }
-            return encodeUTF8_UTF16(val, target, srcOffset, actualLen);
+            return StringCoding.encodeUTF8_UTF16(val, target, srcOffset, actualLen);
         }
 
-        private int encodeUTF8_UTF16(byte[] val, ByteBuffer target, int srcOffset, int len) {
-            int sp = srcOffset;
-            int sl = sp + len;
-
-            while (sp < sl) {
-                // ascii fast loop;
-                char c = StringUTF16.getChar(val, sp);
-                if (c >= '\u0080') {
-                    break;
-                }
-                target.put((byte)c);
-                sp++;
-            }
+        private static int copyLatin1ToUTF8(byte[] val, int srcIdx, int len, ByteBuffer target) {
             int remaining = target.remaining();
-            while (sp < sl) {
-                char c = StringUTF16.getChar(val, sp++);
-                if (c < 0x80 && remaining >= 1) {
-                    target.put((byte)c);
-                    --remaining;
-                } else if (c < 0x800 && remaining >= 2) {
-                    target.put((byte)(0xc0 | (c >> 6)));
-                    target.put((byte)(0x80 | (c & 0x3f)));
+            for (int i = srcIdx, j = srcIdx + len; i < j; ++i) {
+                byte c = val[i];
+                if (c < 0 && remaining >= 2) {
+                    target.put((byte) (0xc0 | ((c & 0xff) >> 6)));
+                    target.put((byte) (0x80 | (c & 0x3f)));
                     remaining -= 2;
-                } else if (Character.isSurrogate(c)) {
-                    int uc = -1;
-                    char c2;
-                    if (Character.isHighSurrogate(c) && sp < sl &&
-                            Character.isLowSurrogate(c2 = StringUTF16.getChar(val, sp))) {
-                        uc = Character.toCodePoint(c, c2);
-                    }
-                    if (uc < 0 || remaining <= 4) {
-                        break;
-                    }
-
-                    target.put((byte)(0xf0 | (uc >> 18)));
-                    target.put((byte)(0x80 | ((uc >> 12) & 0x3f)));
-                    target.put((byte)(0x80 | ((uc >>  6) & 0x3f)));
-                    target.put((byte)(0x80 | (uc & 0x3f)));
-                    sp++;  // 2 chars
-                    remaining -= 4;
-                } else if (remaining >= 3) {
-                    // 3 bytes, 16 bits
-                    target.put((byte)(0xe0 | (c >> 12)));
-                    target.put((byte)(0x80 | ((c >>  6) & 0x3f)));
-                    target.put((byte)(0x80 | (c & 0x3f)));
-                    remaining -= 3;
+                } else if (remaining >= 1) {
+                    target.put(c);
+                    --remaining;
                 } else {
                     break;
                 }
             }
-            return sp - srcOffset;
+            return i;
         }
     }
 
@@ -2214,186 +2188,25 @@ public final class System {
             return i;
         }
 
-        private static int copy8Latin1ByteUTF8(byte[] val, int offset, ByteBuffer target, int remaining) {
-            // assert target.remaining() >= 16;
-            // assert val.length >= offset + 8;
-            byte c = val[offset];
-            if (c < 0) {
-                if (remaining == 1) {
-                    return 0;
-                }
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-                remaining -= 2;
-            } else {
-                target.put(c);
-                --remaining;
-            }
-            
-            c = val[offset + 1];
-            if (c < 0 && remaining >= 2) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-                remaining -= 2;
-            } else if (remaining >= 1) {
-                target.put(c);
-                --remaining;
-            } else {
-                return 1;
-            }
-            
-            c = val[offset + 2];
-            if (c < 0 && remaining >= 2) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-                remaining -= 2;
-            } else if (remaining >= 1) {
-                target.put(c);
-                --remaining;
-            } else {
-                return 2;
-            }
-            
-            c = val[offset + 3];
-            if (c < 0 && remaining >= 2) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-                remaining -= 2;
-            } else if (remaining >= 1) {
-                target.put(c);
-                --remaining;
-            } else {
-                return 3;
-            }
-            
-            c = val[offset + 4];
-            if (c < 0 && remaining >= 2) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-                remaining -= 2;
-            } else if (remaining >= 1) {
-                target.put(c);
-                --remaining;
-            } else {
-                return 4;
-            }
-            
-            c = val[offset + 5];
-            if (c < 0 && remaining >= 2) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-                remaining -= 2;
-            } else if (remaining >= 1) {
-                target.put(c);
-                --remaining;
-            } else {
-                return 5;
-            }
-            
-            c = val[offset + 6];
-            if (c < 0 && remaining >= 2) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-                remaining -= 2;
-            } else if (remaining >= 1) {
-                target.put(c);
-                --remaining;
-            } else {
-                return 6;
-            }
-            
-            c = val[offset + 7];
-            if (c < 0 && remaining >= 2) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-            } else if (remaining >= 1) {
-                target.put(c);
-            } else {
-                return 7;
-            }
-
-            return 8;
-        }
-
-        private static void copy8Latin1ByteUTF8NoRemainingCheck(byte[] val, int offset, ByteBuffer target) {
-            // assert target.remaining() >= 16;
-            // assert val.length >= offset + 8;
-            byte c = val[offset];
-            if (c < 0) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-            } else {
-                target.put(c);
-            }
-
-            c = val[offset + 1];
-            if (c < 0) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-            } else {
-                target.put(c);
-            }
-
-            c = val[offset + 2];
-            if (c < 0) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-            } else {
-                target.put(c);
-            }
-
-            c = val[offset + 3];
-            if (c < 0) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-            } else {
-                target.put(c);
-            }
-
-            c = val[offset + 4];
-            if (c < 0) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-            } else {
-                target.put(c);
-            }
-
-            c = val[offset + 5];
-            if (c < 0) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-            } else {
-                target.put(c);
-            }
-
-            c = val[offset + 6];
-            if (c < 0) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-            } else {
-                target.put(c);
-            }
-
-            c = val[offset + 7];
-            if (c < 0) {
-                target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                        | ((0x80 | (c & 0x3F)) & 0xFF)));
-            } else {
-                target.put(c);
-            }
-        }
-
         @Override
         public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
             //TODO verify srcOffset and len
             int actualLen = Math.min(len, target.remaining());
             byte[] val = asb.value;
             if (asb.isLatin1()) {
+                int asciiCnt = StringCoding.countPositives(val, srcOffset, actualLen);
+                if (asciiCnt > 0) {
+                    target.put(val, srcOffset, asciiCnt);
+                    if (asciiCnt == actualLen) {
+                        return asciiCnt;
+                    }
+                }
                 int remaining = target.remaining();
-                int i=srcOffset;
+                int i=srcOffset + asciiCnt;
                 ByteOrder order = target.order();
                 target.order(ByteOrder.BIG_ENDIAN);
                 try {
+                    remaining = target.remaining();
                     for (int j = srcOffset + actualLen - 7; i < j && remaining >= 8; i += 8) {
                         long bytes = ByteArray.getLong(val, i);
                         if ((bytes & NON_ASCII_MASK) == 0L) {
@@ -2401,9 +2214,9 @@ public final class System {
                             remaining -= 8;
                         } else {
                             if (remaining >= 16) {
-                                copy8Latin1ByteUTF8NoRemainingCheck(val, i, target);
+                                StringCoding.copy8Latin1ByteUTF8NoRemainingCheck(val, i, target);
                             } else {
-                                int copied = copy8Latin1ByteUTF8(val, i, target, remaining);
+                                int copied = StringCoding.copy8Latin1ByteUTF8(val, i, target, remaining);
                                 if (copied != 8) {
                                     return (i + copied) - srcOffset;
                                 }
@@ -2427,60 +2240,7 @@ public final class System {
                 }
                 return i - srcOffset;
             }
-            return encodeUTF8_UTF16(val, target, srcOffset, actualLen);
-        }
-
-        private int encodeUTF8_UTF16(byte[] val, ByteBuffer target, int srcOffset, int len) {
-            int sp = srcOffset;
-            int sl = sp + len;
-
-            while (sp < sl) {
-                // ascii fast loop;
-                char c = StringUTF16.getChar(val, sp);
-                if (c >= '\u0080') {
-                    break;
-                }
-                target.put((byte)c);
-                sp++;
-            }
-            int remaining = target.remaining();
-            while (sp < sl) {
-                char c = StringUTF16.getChar(val, sp++);
-                if (c < 0x80 && remaining >= 1) {
-                    target.put((byte)c);
-                    --remaining;
-                } else if (c < 0x800 && remaining >= 2) {
-                    target.put((byte)(0xc0 | (c >> 6)));
-                    target.put((byte)(0x80 | (c & 0x3f)));
-                    remaining -= 2;
-                } else if (Character.isSurrogate(c)) {
-                    int uc = -1;
-                    char c2;
-                    if (Character.isHighSurrogate(c) && sp < sl &&
-                            Character.isLowSurrogate(c2 = StringUTF16.getChar(val, sp))) {
-                        uc = Character.toCodePoint(c, c2);
-                    }
-                    if (uc < 0 || remaining <= 4) {
-                        break;
-                    }
-
-                    target.put((byte)(0xf0 | (uc >> 18)));
-                    target.put((byte)(0x80 | ((uc >> 12) & 0x3f)));
-                    target.put((byte)(0x80 | ((uc >>  6) & 0x3f)));
-                    target.put((byte)(0x80 | (uc & 0x3f)));
-                    sp++;  // 2 chars
-                    remaining -= 4;
-                } else if (remaining >= 3) {
-                    // 3 bytes, 16 bits
-                    target.put((byte)(0xe0 | (c >> 12)));
-                    target.put((byte)(0x80 | ((c >>  6) & 0x3f)));
-                    target.put((byte)(0x80 | (c & 0x3f)));
-                    remaining -= 3;
-                } else {
-                    break;
-                }
-            }
-            return sp - srcOffset;
+            return StringCoding.encodeUTF8_UTF16(val, target, srcOffset, actualLen);
         }
     }
 
