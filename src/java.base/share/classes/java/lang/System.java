@@ -2077,49 +2077,51 @@ public final class System {
                         return asciiCnt;
                     }
                 }
-                if (target.hasArray()) {
-                    byte[] dst = target.array();
-                    int dp = target.position() + target.arrayOffset();
-                    int remaining = target.remaining();
-                    for (int i = asciiCnt + srcOffset, j = actualLen + srcOffset; i < j; ++i) {
+                int remaining = target.remaining();
+                int i=srcOffset + asciiCnt;
+                ByteOrder order = target.order();
+                target.order(ByteOrder.BIG_ENDIAN);
+                try {
+                    remaining = target.remaining();
+                    byte[] buffer = new byte[16];
+                    for (int j = srcOffset + actualLen - 7; i < j && remaining >= 8; i += 8) {
+                        long bytes = ByteArray.getLong(val, i);
+                        if ((bytes & NON_ASCII_MASK) == 0L) {
+                            target.putLong(bytes);
+                            remaining -= 8;
+                        } else {
+                            if (remaining >= 16) {
+                                StringCoding.copy8Latin1ByteUTF8NoRemainingCheck_buffer(val, i, target, buffer);
+                            } else {
+                                int copied = StringCoding.copy8Latin1ByteUTF8(val, i, target, remaining);
+                                if (copied != 8) {
+                                    return (i + copied) - srcOffset;
+                                }
+                            }
+                            remaining = target.remaining();
+                        }
+                    }
+                    // there are a max of 7 bytes left to examine
+                    int dp = 0;
+                    for (int j = actualLen + srcOffset; i < j && remaining > 0; ++i) {
                         byte c = val[i];
                         if (c < 0 && remaining >= 2) {
-                            dst[dp++] = (byte) (0xc0 | ((c & 0xff) >> 6));
-                            dst[dp++] = (byte) (0x80 | (c & 0x3f));
+                            buffer[dp] = (byte) (0xc0 | ((c & 0xff) >> 6));
+                            buffer[dp + 1] = (byte) (0x80 | (c & 0x3f));
+                            dp += 2;
                             remaining -= 2;
-                        } else if (remaining >= 1) {
-                            dst[dp++] = c;
-                            --remaining;
                         } else {
-                            break;
+                            buffer[dp++] = c;
+                            --remaining;
                         }
-                        ++asciiCnt;
                     }
-                    target.position(target.limit() - remaining);
-                    return asciiCnt;
+                    target.put(buffer, 0, dp);
+                } finally {
+                    target.order(order);
                 }
-                return asciiCnt + copyLatin1ToUTF8(val, asciiCnt + srcOffset, actualLen - asciiCnt, target);
+                return i - srcOffset;
             }
             return StringCoding.encodeUTF8_UTF16(val, target, srcOffset, actualLen);
-        }
-
-        private static int copyLatin1ToUTF8(byte[] val, int srcIdx, int len, ByteBuffer target) {
-            int remaining = target.remaining();
-            int i = srcIdx;
-            for (int j = srcIdx + len; i < j; ++i) {
-                byte c = val[i];
-                if (c < 0 && remaining >= 2) {
-                    target.put((byte) (0xc0 | ((c & 0xff) >> 6)));
-                    target.put((byte) (0x80 | (c & 0x3f)));
-                    remaining -= 2;
-                } else if (remaining >= 1) {
-                    target.put(c);
-                    --remaining;
-                } else {
-                    break;
-                }
-            }
-            return i - srcIdx;
         }
     }
 
