@@ -197,9 +197,10 @@ class StringCoding {
     }
 
 
-    static int copy8Latin1ByteUTF8(byte[] val, int offset, ByteBuffer target, int remaining) {
-        // assert target.remaining() >= 16;
+    static int copy8Latin1ByteUTF8(byte[] val, int offset, ByteBuffer target) {
+        // assert target.remaining() >= 8;
         // assert val.length >= offset + 8;
+        int remaining = target.remaining();
         byte c = val[offset];
         if (c < 0) {
             if (remaining == 1) {
@@ -364,85 +365,6 @@ class StringCoding {
         } else {
             target.put(c);
         }
-    }
-
-    static void copy8Latin1ByteUTF8NoRemainingCheck_buffer(byte[] val, int offset, ByteBuffer target, byte[] buffer) {
-        // assert target.remaining() >= 16;
-        // assert val.length >= offset + 8;
-        // assert buffer.length >= 16;
-        int dp = 0;
-        byte c = val[offset];
-        if (c < 0) {
-            buffer[dp] = (byte) (0xc0 | ((c & 0xff) >> 6));
-            buffer[dp + 1] = (byte) (0x80 | (c & 0x3f));
-            dp += 2;
-        } else {
-            buffer[dp++] = c;
-        }
-
-        c = val[offset + 1];
-        if (c < 0) {
-            buffer[dp] = (byte) (0xc0 | ((c & 0xff) >> 6));
-            buffer[dp + 1] = (byte) (0x80 | (c & 0x3f));
-            dp += 2;
-        } else {
-            buffer[dp++] = c;
-        }
-
-        c = val[offset + 2];
-        if (c < 0) {
-            buffer[dp] = (byte) (0xc0 | ((c & 0xff) >> 6));
-            buffer[dp + 1] = (byte) (0x80 | (c & 0x3f));
-            dp += 2;
-        } else {
-            buffer[dp++] = c;
-        }
-
-        c = val[offset + 3];
-        if (c < 0) {
-            buffer[dp] = (byte) (0xc0 | ((c & 0xff) >> 6));
-            buffer[dp + 1] = (byte) (0x80 | (c & 0x3f));
-            dp += 2;
-        } else {
-            buffer[dp++] = c;
-        }
-
-        c = val[offset + 4];
-        if (c < 0) {
-            buffer[dp] = (byte) (0xc0 | ((c & 0xff) >> 6));
-            buffer[dp + 1] = (byte) (0x80 | (c & 0x3f));
-            dp += 2;
-        } else {
-            buffer[dp++] = c;
-        }
-
-        c = val[offset + 5];
-        if (c < 0) {
-            buffer[dp] = (byte) (0xc0 | ((c & 0xff) >> 6));
-            buffer[dp + 1] = (byte) (0x80 | (c & 0x3f));
-            dp += 2;
-        } else {
-            buffer[dp++] = c;
-        }
-
-        c = val[offset + 6];
-        if (c < 0) {
-            buffer[dp] = (byte) (0xc0 | ((c & 0xff) >> 6));
-            buffer[dp + 1] = (byte) (0x80 | (c & 0x3f));
-            dp += 2;
-        } else {
-            buffer[dp++] = c;
-        }
-
-        c = val[offset + 7];
-        if (c < 0) {
-            buffer[dp] = (byte) (0xc0 | ((c & 0xff) >> 6));
-            buffer[dp + 1] = (byte) (0x80 | (c & 0x3f));
-            dp += 2;
-        } else {
-            buffer[dp++] = c;
-        }
-        target.put(buffer, 0, dp);
     }
 
     static int encodeUTF8_UTF16(byte[] val, ByteBuffer target, int srcOffset, int len) {

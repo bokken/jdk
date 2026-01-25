@@ -70,6 +70,12 @@ final class StringLatin1 {
         return dst;
     }
 
+    static char[] toChars(byte[] value, int offset) {
+        char[] dst = new char[value.length - offset];
+        inflate(value, offset, dst, 0, dst.length);
+        return dst;
+    }
+
     static byte[] inflate(byte[] value, int off, int len) {
         byte[] ret = StringUTF16.newBytesFor(len);
         inflate(value, off, ret, 0, len);

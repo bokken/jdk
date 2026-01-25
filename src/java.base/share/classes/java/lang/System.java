@@ -81,6 +81,7 @@ import jdk.internal.logger.LazyLoggers;
 import jdk.internal.logger.LocalizedLoggerWrapper;
 import jdk.internal.misc.VM;
 import jdk.internal.util.ByteArray;
+import jdk.internal.util.Preconditions;
 import jdk.internal.util.SystemProps;
 import jdk.internal.vm.Continuation;
 import jdk.internal.vm.ContinuationScope;
@@ -2009,7 +2010,7 @@ public final class System {
 
         @Override
         public int copyAscii(ByteBuffer target, int srcOffset, int len) {
-            //TODO verify srcOffset and len
+            Preconditions.checkFromIndexSize(srcOffset, len, string.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
             byte[] val = string.value();
             if (string.isLatin1()) {
@@ -2041,7 +2042,7 @@ public final class System {
 
         @Override
         public int copyLatin1(ByteBuffer target, int srcOffset, int len) {
-            //TODO verify srcOffset and len
+            Preconditions.checkFromIndexSize(srcOffset, len, string.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
             byte[] val = string.value();
             if (string.isLatin1()) {
@@ -2062,11 +2063,11 @@ public final class System {
                 target.put((byte)c);
             }
             return i;
-        }
+        }        
 
         @Override
         public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
-            //TODO verify srcOffset and len
+            Preconditions.checkFromIndexSize(srcOffset, len, string.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
             byte[] val = string.value();
             if (string.isLatin1()) {
@@ -2083,7 +2084,6 @@ public final class System {
                 target.order(ByteOrder.BIG_ENDIAN);
                 try {
                     remaining = target.remaining();
-                    byte[] buffer = new byte[16];
                     for (int j = srcOffset + actualLen - 7; i < j && remaining >= 8; i += 8) {
                         long bytes = ByteArray.getLong(val, i);
                         if ((bytes & NON_ASCII_MASK) == 0L) {
@@ -2091,9 +2091,9 @@ public final class System {
                             remaining -= 8;
                         } else {
                             if (remaining >= 16) {
-                                StringCoding.copy8Latin1ByteUTF8NoRemainingCheck_buffer(val, i, target, buffer);
+                                StringCoding.copy8Latin1ByteUTF8NoRemainingCheck(val, i, target);
                             } else {
-                                int copied = StringCoding.copy8Latin1ByteUTF8(val, i, target, remaining);
+                                int copied = StringCoding.copy8Latin1ByteUTF8(val, i, target);
                                 if (copied != 8) {
                                     return (i + copied) - srcOffset;
                                 }
@@ -2106,16 +2106,15 @@ public final class System {
                     for (int j = actualLen + srcOffset; i < j && remaining > 0; ++i) {
                         byte c = val[i];
                         if (c < 0 && remaining >= 2) {
-                            buffer[dp] = (byte) (0xc0 | ((c & 0xff) >> 6));
-                            buffer[dp + 1] = (byte) (0x80 | (c & 0x3f));
+                            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
+                                    | ((0x80 | (c & 0x3F)) & 0xFF)));
                             dp += 2;
                             remaining -= 2;
                         } else {
-                            buffer[dp++] = c;
+                            target.put(c);
                             --remaining;
                         }
                     }
-                    target.put(buffer, 0, dp);
                 } finally {
                     target.order(order);
                 }
@@ -2136,7 +2135,7 @@ public final class System {
 
         @Override
         public int copyAscii(ByteBuffer target, int srcOffset, int len) {
-            //TODO verify srcOffset and len
+            Preconditions.checkFromIndexSize(srcOffset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
             byte[] val = asb.value;
             if (asb.isLatin1()) {
@@ -2168,7 +2167,7 @@ public final class System {
 
         @Override
         public int copyLatin1(ByteBuffer target, int srcOffset, int len) {
-            //TODO verify srcOffset and len
+            Preconditions.checkFromIndexSize(srcOffset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
             byte[] val = asb.value;
             if (asb.isLatin1()) {
@@ -2193,7 +2192,7 @@ public final class System {
 
         @Override
         public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
-            //TODO verify srcOffset and len
+            Preconditions.checkFromIndexSize(srcOffset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
             byte[] val = asb.value;
             if (asb.isLatin1()) {
@@ -2219,7 +2218,7 @@ public final class System {
                             if (remaining >= 16) {
                                 StringCoding.copy8Latin1ByteUTF8NoRemainingCheck(val, i, target);
                             } else {
-                                int copied = StringCoding.copy8Latin1ByteUTF8(val, i, target, remaining);
+                                int copied = StringCoding.copy8Latin1ByteUTF8(val, i, target);
                                 if (copied != 8) {
                                     return (i + copied) - srcOffset;
                                 }

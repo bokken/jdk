@@ -66,7 +66,7 @@ sealed class StringCharBuffer                                  // package-privat
                                     offset + index);
     }
 
-    private StringCharBuffer(CharSequence s,
+    StringCharBuffer(CharSequence s,
                              int mark,
                              int pos,
                              int limit,

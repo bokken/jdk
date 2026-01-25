@@ -243,27 +243,23 @@ public class ISO_8859_1
                                            sun.nio.RawCharacterProducer producer,
                                            ByteBuffer dst)
         {
-            final CoderResult result;
             while (src.hasRemaining()) {
                 int copied = producer.copyLatin1(dst, 0, Math.min(src.remaining(), dst.remaining()));
-                int newPosition = src.position() + copied;
-                src.position(newPosition);
+                int position = src.position() + copied;
+                src.position(position);
                 if (src.hasRemaining()) {
-                    try {
-                        char c = src.get();
-                        if (c <= '\u00FF') {
-                            if (!dst.hasRemaining())
-                                return CoderResult.OVERFLOW;
-                            dst.put((byte) c);
-                            newPosition++;
-                        } else {
-                            if (sgp.parse(c, src) < 0)
-                                return sgp.error();
-                            return sgp.unmappableResult();
-                        }
-                    } finally {
-                        src.position(newPosition);
+                    if (!dst.hasRemaining()) {
+                        return CoderResult.OVERFLOW;
                     }
+                    // the next character must not be latin1
+                    char c = src.get();
+                    assert c > '\u00FF';
+                    int uc = sgp.parse(c, src);
+                    // reset position back to before this char was read
+                    src.position(position);
+                    if (uc < 0)
+                        return sgp.error();
+                    return sgp.unmappableResult();
                 }
             }
             return CoderResult.UNDERFLOW;

@@ -513,25 +513,20 @@ public final class UTF_8 extends Unicode {
 
         private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
             if (buffer == null) {
-                buffer = new char[1024];
+                buffer = new char[512];
             }
             CharBuffer tempCB = CharBuffer.wrap(buffer);
-            while(src.hasRemaining()) {
-                int position = src.position();
+            while (src.hasRemaining()) {
                 int length = Math.min(buffer.length, src.remaining());
                 src.get(buffer, 0, length);
-                try {
-                    tempCB.limit(length);
-                    CoderResult cr = encodeArrayLoop(tempCB, dst);
-                    int remaining = tempCB.remaining();
-                    position = src.position() - remaining;
-                    if (cr != CoderResult.UNDERFLOW)
-                        return cr;
+                tempCB.limit(length);
+                CoderResult cr = encodeArrayLoop(tempCB, dst);
+                int remaining = tempCB.remaining();
+                src.position(src.position() - remaining);
+                if (cr != CoderResult.UNDERFLOW)
+                    return cr;
 
-                    tempCB.clear();
-                } finally {
-                    src.position(position);
-                }
+                tempCB.clear();
             }
             return CoderResult.UNDERFLOW;
         }
