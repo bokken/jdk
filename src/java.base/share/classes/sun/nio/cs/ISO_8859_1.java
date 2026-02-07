@@ -243,7 +243,7 @@ public class ISO_8859_1
                                            sun.nio.RawCharacterProducer producer,
                                            ByteBuffer dst)
         {
-            while (src.hasRemaining()) {
+            if (src.hasRemaining()) {
                 int copied = producer.copyLatin1(dst, 0, Math.min(src.remaining(), dst.remaining()));
                 int position = src.position() + copied;
                 src.position(position);
