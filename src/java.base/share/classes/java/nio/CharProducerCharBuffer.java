@@ -52,9 +52,9 @@ final class CharProducerCharBuffer extends StringCharBuffer implements sun.nio.R
 
     @Override
     public <R extends Object> R consume(RawCharacterConsumer<? extends R> consumer) {
-        return (R) producer.consume((bytes, offset, len) -> {
+        return producer.consume((bytes, offset, len) -> {
             int position = offset + position();
-            return (R) consumer.consume(bytes, position, Math.min(len, remaining())); 
+            return consumer.consume(bytes, position, Math.min(len, remaining())); 
         });
     }
 

@@ -406,6 +406,7 @@ public class SingleByte
                     return src.hasRemaining() ? CoderResult.OVERFLOW
                                               : CoderResult.UNDERFLOW;
                 }
+                return CoderResult.UNDERFLOW;
             });
         }
 
