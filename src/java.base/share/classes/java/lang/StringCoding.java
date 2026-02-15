@@ -368,34 +368,29 @@ class StringCoding {
     }
 
     static int encodeUTF8_UTF16(byte[] val, ByteBuffer target, int srcOffset, int len) {
-        if (target.hasArray()) {
-            return encodeUTF8_UTF16_Array(val, target.array(), srcOffset, target.arrayOffset() + target.position(), len, target.remaining());
-        }
-        return encodeUTF8_UTF16_Buffer(val, target, srcOffset, len);
-    }
-
-    private static int encodeUTF8_UTF16_Buffer(byte[] val, ByteBuffer target, int srcOffset, int len) {
         int sp = srcOffset;
-        int sl = sp + len;
+        int dp = target.position();
 
+        int maxLen = Math.min(len, target.remaining());
+        int sl = maxLen + sp;
         while (sp < sl) {
             // ascii fast loop;
             char c = StringUTF16.getChar(val, sp);
             if (c >= '\u0080') {
                 break;
             }
-            target.put((byte)c);
+            target.put(dp++, (byte)c);
             sp++;
         }
         int remaining = target.remaining();
         while (sp < sl) {
             char c = StringUTF16.getChar(val, sp++);
             if (c < 0x80 && remaining >= 1) {
-                target.put((byte)c);
+                target.put(dp++, (byte)c);
                 --remaining;
             } else if (c < 0x800 && remaining >= 2) {
-                target.put((byte)(0xc0 | (c >> 6)));
-                target.put((byte)(0x80 | (c & 0x3f)));
+                target.put(dp++, (byte)(0xc0 | (c >> 6)));
+                target.put(dp++, (byte)(0x80 | (c & 0x3f)));
                 remaining -= 2;
             } else if (Character.isSurrogate(c)) {
                 int uc = -1;
@@ -408,75 +403,23 @@ class StringCoding {
                     break;
                 }
 
-                target.put((byte)(0xf0 | (uc >> 18)));
-                target.put((byte)(0x80 | ((uc >> 12) & 0x3f)));
-                target.put((byte)(0x80 | ((uc >>  6) & 0x3f)));
-                target.put((byte)(0x80 | (uc & 0x3f)));
+                target.put(dp++, (byte)(0xf0 | (uc >> 18)));
+                target.put(dp++, (byte)(0x80 | ((uc >> 12) & 0x3f)));
+                target.put(dp++, (byte)(0x80 | ((uc >>  6) & 0x3f)));
+                target.put(dp++, (byte)(0x80 | (uc & 0x3f)));
                 sp++;  // 2 chars
                 remaining -= 4;
             } else if (remaining >= 3) {
                 // 3 bytes, 16 bits
-                target.put((byte)(0xe0 | (c >> 12)));
-                target.put((byte)(0x80 | ((c >>  6) & 0x3f)));
-                target.put((byte)(0x80 | (c & 0x3f)));
+                target.put(dp++, (byte)(0xe0 | (c >> 12)));
+                target.put(dp++, (byte)(0x80 | ((c >>  6) & 0x3f)));
+                target.put(dp++, (byte)(0x80 | (c & 0x3f)));
                 remaining -= 3;
             } else {
                 break;
             }
         }
-        return sp - srcOffset;
-    }
-
-    static int encodeUTF8_UTF16_Array(byte[] val, byte[] target, int srcOffset, int targetOffset, int len, int targetRemaining) {
-        int sp = srcOffset;
-        int sl = sp + len;
-
-        while (sp < sl) {
-            // ascii fast loop;
-            char c = StringUTF16.getChar(val, sp);
-            if (c >= '\u0080') {
-                break;
-            }
-            target[targetOffset++] = (byte) c;
-            sp++;
-            --targetRemaining;
-        }
-        while (sp < sl) {
-            char c = StringUTF16.getChar(val, sp++);
-            if (c < 0x80 && targetRemaining >= 1) {
-                target[targetOffset++] = (byte) c;
-                --targetRemaining;
-            } else if (c < 0x800 && targetRemaining >= 2) {
-                target[targetOffset++] = (byte)(0xc0 | (c >> 6));
-                target[targetOffset++] = (byte)(0x80 | (c & 0x3f));
-                targetRemaining -= 2;
-            } else if (Character.isSurrogate(c)) {
-                int uc = -1;
-                char c2;
-                if (Character.isHighSurrogate(c) && sp < sl &&
-                        Character.isLowSurrogate(c2 = StringUTF16.getChar(val, sp))) {
-                    uc = Character.toCodePoint(c, c2);
-                }
-                if (uc < 0 || targetRemaining <= 4) {
-                    break;
-                }
-
-                target[targetOffset++] = (byte)(0xf0 | (uc >> 18));
-                target[targetOffset++] = (byte)(0x80 | ((uc >> 12) & 0x3f));
-                target[targetOffset++] = (byte)(0x80 | ((uc >>  6) & 0x3f));
-                target[targetOffset++] = (byte)(0x80 | (uc & 0x3f));
-                sp++;  // 2 chars
-                targetRemaining -= 4;
-            } else if (targetRemaining >= 3) {
-                // 3 bytes, 16 bits
-                target[targetOffset++] = (byte)(0xe0 | (c >> 12));
-                target[targetOffset++] = (byte)(0x80 | ((c >>  6) & 0x3f));
-                target[targetOffset++] = (byte)(0x80 | (c & 0x3f));
-                targetRemaining -= 3;
-            } else {
-                break;
-            }
-        }
+        target.position(dp);
         return sp - srcOffset;
     }
 }

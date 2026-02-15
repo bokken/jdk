@@ -199,50 +199,54 @@ public class US_ASCII
         private CoderResult encodeBufferLoop(CharBuffer src,
                                              ByteBuffer dst)
         {
-            int mark = src.position();
-            try {
-                while (src.hasRemaining()) {
-                    char c = src.get();
-                    if (c < 0x80) {
-                        if (!dst.hasRemaining())
-                            return CoderResult.OVERFLOW;
-                        dst.put((byte)c);
-                        mark++;
-                        continue;
-                    }
+            int sp = src.position();
+            int dp = dst.position();
+            int len = Math.min(src.remaining(), dst.remaining());
+            for (int j = sp + len; sp < j; ++sp) {
+                char c = src.get(sp);
+                if (c < 0x80) {
+                    if (!dst.hasRemaining())
+                        return CoderResult.OVERFLOW;
+                    dst.put(dp++, (byte) c);
+                } else {
+                    src.position(sp + 1);
                     if (sgp.parse(c, src) < 0)
                         return sgp.error();
                     return sgp.unmappableResult();
                 }
-                return CoderResult.UNDERFLOW;
-            } finally {
-                src.position(mark);
             }
+            src.position(sp);
+            dst.position(dp);
+            return src.hasRemaining() ? CoderResult.OVERFLOW : CoderResult.UNDERFLOW;
         }
 
         private CoderResult encodeProducer(CharBuffer src,
                                            sun.nio.RawCharacterProducer producer,
                                            ByteBuffer dst)
         {
-            if (src.hasRemaining()) {
-                int copied = producer.copyAscii(dst, 0, Math.min(src.remaining(), dst.remaining()));
-                int position = src.position() + copied;
-                src.position(position);
+            return (CoderResult) producer.consume((bytes, offset, length) -> {
                 if (src.hasRemaining()) {
-                    if (!dst.hasRemaining())
-                        return CoderResult.OVERFLOW;
-                    try {
-                        char c = src.get();
-                        assert c >= 0x80;
-                        if (sgp.parse(c, src) < 0)
-                            return sgp.error();
-                        return sgp.unmappableResult();
-                    } finally {
-                        src.position(position);
+                    int position = src.position();
+                    int maxLen = Math.min(length, dst.remaining());
+                    int sl = offset + maxLen;
+                    if (producer.isLatin1()) {
+                        int positives = JLA.countPositives(bytes, offset, maxLen);
+                        if (positives > 0) {
+                            dst.put(bytes, offset, positives);
+                            position += positives;
+                            src.position(position);
+                            if (positives == maxLen) {
+                                return src.hasRemaining() ? CoderResult.OVERFLOW : CoderResult.UNDERFLOW;
+                            }
+                            length -= positives;
+                            maxLen -= positives;
+                            offset += positives;
+                        }
                     }
+                    return encodeBufferLoop(src, dst);
                 }
-            }
-            return CoderResult.UNDERFLOW;
+                return CoderResult.UNDERFLOW;
+            });
         }
 
         protected CoderResult encodeLoop(CharBuffer src,

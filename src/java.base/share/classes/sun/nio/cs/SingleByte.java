@@ -27,6 +27,7 @@ package sun.nio.cs;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
@@ -38,6 +39,7 @@ import static sun.nio.cs.CharsetMapping.UNMAPPABLE_ENCODING;
 
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
+import jdk.internal.util.ByteArray;
 
 public class SingleByte
 {
@@ -184,6 +186,7 @@ public class SingleByte
         }
     }
 
+    private static final long NON_ASCII_MASK = 0x8080808080808080L;
     public static final class Encoder extends CharsetEncoder
                                       implements ArrayEncoder {
         private Surrogate.Parser sgp;
@@ -308,43 +311,102 @@ public class SingleByte
                                            sun.nio.RawCharacterProducer producer,
                                            ByteBuffer dst)
         {
-            if (isASCIICompatible()) {
-                while(src.hasRemaining()) {
-                    int copied = producer.copyAscii(dst, 0, Math.min(src.remaining(), dst.remaining()));
-                    int position = src.position() + copied;
-                    src.position(position);
-                    if (src.hasRemaining()) {
-                        char c = src.get();
-                        int b = encode(c);
-                        if (b == UNMAPPABLE_ENCODING) {
-                            if (Character.isSurrogate(c)) {
-                                if (sgp == null)
-                                    sgp = new Surrogate.Parser();
-                                int uc = sgp.parse(c, src);
-                                // reset position back to before this char was read
+            return producer.consume((bytes, offset, length) -> {
+                if(src.hasRemaining()) {
+                    int position = src.position();
+                    int maxLen = Math.min(length, dst.remaining());
+                    int sl = offset + maxLen;
+                    if (producer.isLatin1()) {
+                        if (isASCIICompatible()) {
+                            int positives = JLA.countPositives(bytes, offset, maxLen);
+                            if (positives > 0) {
+                                dst.put(bytes, offset, positives);
+                                position += positives;
                                 src.position(position);
-                                if (uc < 0)
-                                    return sgp.error();
-                                return sgp.unmappableResult();
+                                if (positives == maxLen) {
+                                    return src.hasRemaining() ? CoderResult.OVERFLOW
+                                                              : CoderResult.UNDERFLOW;
+                                }
+                                length -= positives;
+                                maxLen -= positives;
+                                offset += positives;
                             }
-                            // reset position back to before this char was read
-                            src.position(position);
-                            return CoderResult.unmappableForLength(1);
+
+                            int dp = dst.position();
+                            ByteOrder order = dst.order();
+                            dst.order(ByteOrder.BIG_ENDIAN);
+                            try {
+                                for (int j = sl - 7; offset < j; offset += 8) {
+                                    long word = ByteArray.getLong(bytes, offset);
+                                    if ((word & NON_ASCII_MASK) == 0L) {
+                                        dst.putLong(dp, word);
+                                        position += 8;
+                                        dp += 8;
+                                    } else {
+                                        for (int x = offset, y = offset + 8; x < y; ++x) {
+                                            char c = (char) (src[x] & 0xff);
+                                            int b = encode(c);
+                                            if (b == UNMAPPABLE_ENCODING) {
+                                                // reset position back to before this char was read
+                                                src.position(position);
+                                                return CoderResult.unmappableForLength(1);
+                                            }
+                                            ++position;
+                                            dst.put(dp++, (byte) b);
+                                        }
+                                    }
+                                }
+                            } finally {
+                                dst.order(order);
+                                dst.position(dp);
+                            }
                         }
-                        if (!dst.hasRemaining()) {
-                            // reset position back to before this char was read
+                        int dp = dst.position();
+                        try {
+                            while (offset < sl) {
+                                char c = (char)(src[offset++] & 0xff);
+                                int b = encode(c);
+                                if (b == UNMAPPABLE_ENCODING) {
+                                    return CoderResult.unmappableForLength(1);
+                                }
+                                ++position;
+                                dst.put(dp++, (byte) b);
+                            }
+                        } finally {
                             src.position(position);
-                            return CoderResult.OVERFLOW;
+                            dst.position(dp);
                         }
-                        dst.put((byte) b);
+                    } else {
+                        //TODO: would be great to have an intrinsic which scans for ascii compatible
+                        int dp = dst.position();
+                        try {
+                            while (offset < sl) {
+                                char c = StringUTF16.getChar(src, offset++);
+                                int b = encode(c);
+                                if (b == UNMAPPABLE_ENCODING) {
+                                    src.position(position + 1);
+                                    if (Character.isSurrogate(c)) {
+                                        if (sgp == null)
+                                            sgp = new Surrogate.Parser();
+                                        int uc = sgp.parse(c, src);
+                                        if (uc < 0)
+                                            return sgp.error();
+                                        return sgp.unmappableResult();
+                                    }
+                                    return CoderResult.unmappableForLength(1);
+                                }
+                                ++position;
+                                dst.put(dp++, (byte) b);
+                            }
+                        } finally {
+                            src.position(position);
+                            dst.position(dp);
+                        }
                     }
+                    return src.hasRemaining() ? CoderResult.OVERFLOW
+                                              : CoderResult.UNDERFLOW;
                 }
-                return CoderResult.UNDERFLOW;
-            }
-            if (dst.hasArray()) {
-                return encodeDstArrayLoop(src, dst);
-            }
-            return encodeBufferLoop(src, dst);
+            });
         }
 
         protected CoderResult encodeLoop(CharBuffer src, ByteBuffer dst) {

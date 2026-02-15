@@ -27,6 +27,8 @@ package java.nio;
 
 import java.util.Objects;
 
+import sun.nio.RawCharacterProducer.RawCharacterConsumer;
+
 final class CharProducerCharBuffer extends StringCharBuffer implements sun.nio.RawCharacterProducer {
 
     private final sun.nio.RawCharacterProducer producer;
@@ -45,6 +47,23 @@ final class CharProducerCharBuffer extends StringCharBuffer implements sun.nio.R
                              sun.nio.RawCharacterProducer producer) {
         super(s, mark, pos, limit, cap, offset);
         this.producer = producer;
+    }
+
+
+    @Override
+    public <R extends Object> R consume(RawCharacterConsumer<? extends R> consumer) {
+        return (R) producer.consume((bytes, offset, len) -> {
+            int position = offset + position();
+            return (R) consumer.consume(bytes, position, Math.min(len, remaining())); 
+        });
+    }
+
+    /**
+     * @return {@code true} if the {@code byte[]} produced contains characters in <i>latin 1</i> or {@code false} if <i>utf-16</i>.
+     */
+    @Override
+    public boolean isLatin1() {
+        return producer.isLatin1();
     }
 
     @Override

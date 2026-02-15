@@ -90,6 +90,7 @@ import jdk.internal.vm.ThreadContainer;
 import jdk.internal.vm.annotation.IntrinsicCandidate;
 import jdk.internal.vm.annotation.Stable;
 import sun.reflect.annotation.AnnotationType;
+import sun.nio.RawCharacterProducer.RawCharacterConsumer;
 import sun.nio.ch.Interruptible;
 import sun.nio.cs.UTF_8;
 
@@ -2009,6 +2010,19 @@ public final class System {
         }
 
         @Override
+        public <R extends Object> R consume(sun.nio.RawCharacterProducer.RawCharacterConsumer<? extends R> consumer) {
+            return consumer.consume(string.value(), 0, string.length());
+        }
+
+        /**
+         * @return {@code true} if the {@code byte[]} produced contains characters in <i>latin 1</i> or {@code false} if <i>utf-16</i>.
+         */
+        @Override
+        public boolean isLatin1() {
+            return string.isLatin1();
+        }
+
+        @Override
         public int copyAscii(ByteBuffer target, int srcOffset, int len) {
             Preconditions.checkFromIndexSize(srcOffset, len, string.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
@@ -2192,6 +2206,19 @@ public final class System {
         
         ASBRawCharacterProducer(AbstractStringBuilder asb) {
             this.asb = asb;
+        }
+
+        @Override
+        public <R extends Object> R consume(sun.nio.RawCharacterProducer.RawCharacterConsumer<? extends R> consumer) {
+            return consumer.consume(asb.value, 0, asb.length());
+        }
+
+        /**
+         * @return {@code true} if the {@code byte[]} produced contains characters in <i>latin 1</i> or {@code false} if <i>utf-16</i>.
+         */
+        @Override
+        public boolean isLatin1() {
+            return asb.isLatin1();
         }
 
         @Override
