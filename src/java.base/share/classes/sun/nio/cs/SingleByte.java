@@ -327,9 +327,10 @@ public class SingleByte
                     return CoderResult.unmappableForLength(1);
                 }
                 dst.put(dp++, (byte) b);
+                --maxLen;
 
                 // now if the source is latin 1 we will process in strides of 8 bytes at a time
-                ByteBuffer latin1Bytes = producer.getLatin1Bytes(0, maxLen);
+                ByteBuffer latin1Bytes = producer.getLatin1Bytes(1, maxLen);
                 if (latin1Bytes != null) {
                     int bbIdx = 0;
                     latin1Bytes.order(ByteOrder.BIG_ENDIAN);
