@@ -27,9 +27,11 @@ package sun.nio.cs;
 
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
+import jdk.internal.util.ByteArray;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
@@ -416,7 +418,7 @@ public final class UTF_8 extends Unicode {
 
     private static final class Encoder extends CharsetEncoder {
 
-        private char[] buffer;
+        private static final long NON_ASCII_MASK = 0x8080808080808080L;
 
         private Encoder(Charset cs) {
             super(cs, 1.1f, 3.0f);
@@ -458,6 +460,8 @@ public final class UTF_8 extends Unicode {
             sp += n;
             dp += n;
 
+            // this could probably be reworked to call through to encodeBufferLoop
+            // and remove the array loop slow method
             if (sp < sl) {
                 return encodeArrayLoopSlow(src, sa, sp, sl, dst, da, dp, dl);
             } else {
@@ -511,70 +515,58 @@ public final class UTF_8 extends Unicode {
             return CoderResult.UNDERFLOW;
         }
 
-        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
-            if (buffer == null) {
-                buffer = new char[512];
-            }
-            CharBuffer tempCB = CharBuffer.wrap(buffer);
-            while (src.hasRemaining()) {
-                int length = Math.min(buffer.length, src.remaining());
-                src.get(buffer, 0, length);
-                tempCB.limit(length);
-                CoderResult cr = encodeArrayLoop(tempCB, dst);
-                int remaining = tempCB.remaining();
-                src.position(src.position() - remaining);
-                if (cr != CoderResult.UNDERFLOW)
-                    return cr;
-
-                tempCB.clear();
-            }
-            return CoderResult.UNDERFLOW;
-        }
-
         private CoderResult encodeBufferLoop(CharBuffer src,
                                              ByteBuffer dst)
         {
-            int mark = src.position();
-            while (src.hasRemaining()) {
-                char c = src.get();
+            int sp = src.position();
+            int dp = dst.position();
+            int remaining = dst.remaining();
+            int sl = sp + src.remaining();
+            while (sp < sl) {
+                char c = src.get(sp++);
                 if (c < 0x80) {
                     // Have at most seven bits
-                    if (!dst.hasRemaining())
-                        return overflow(src, mark);
-                    dst.put((byte)c);
+                    if (remaining == 0)
+                        return overflow(src, sp - 1);
+                    dst.put(dp++, (byte)c);
+                    --remaining;
                 } else if (c < 0x800) {
                     // 2 bytes, 11 bits
-                    if (dst.remaining() < 2)
-                        return overflow(src, mark);
-                    dst.put((byte)(0xc0 | (c >> 6)));
-                    dst.put((byte)(0x80 | (c & 0x3f)));
+                    if (remaining < 2)
+                        return overflow(src, sp - 1);
+                    dst.put(dp++, (byte)(0xc0 | (c >> 6)));
+                    dst.put(dp++, (byte)(0x80 | (c & 0x3f)));
+                    remaining -= 2;
                 } else if (Character.isSurrogate(c)) {
                     // Have a surrogate pair
                     if (sgp == null)
                         sgp = new Surrogate.Parser();
+                    src.position(sp);
                     int uc = sgp.parse(c, src);
                     if (uc < 0) {
-                        src.position(mark);
+                        src.position(sp - 1);
                         return sgp.error();
                     }
-                    if (dst.remaining() < 4)
-                        return overflow(src, mark);
-                    dst.put((byte)(0xf0 | ((uc >> 18))));
-                    dst.put((byte)(0x80 | ((uc >> 12) & 0x3f)));
-                    dst.put((byte)(0x80 | ((uc >>  6) & 0x3f)));
-                    dst.put((byte)(0x80 | (uc & 0x3f)));
-                    mark++;  // 2 chars
+                    if (remaining < 4)
+                        return overflow(src, sp - 1);
+                    dst.put(dp++, (byte)(0xf0 | ((uc >> 18))));
+                    dst.put(dp++, (byte)(0x80 | ((uc >> 12) & 0x3f)));
+                    dst.put(dp++, (byte)(0x80 | ((uc >>  6) & 0x3f)));
+                    dst.put(dp++, (byte)(0x80 | (uc & 0x3f)));
+                    sp++;  // 2 chars
+                    remaining -= 4;
                 } else {
                     // 3 bytes, 16 bits
-                    if (dst.remaining() < 3)
-                        return overflow(src, mark);
-                    dst.put((byte)(0xe0 | ((c >> 12))));
-                    dst.put((byte)(0x80 | ((c >>  6) & 0x3f)));
-                    dst.put((byte)(0x80 | (c & 0x3f)));
+                    if (remaining < 3)
+                        return overflow(src, sp - 1);
+                    dst.put(dp++, (byte)(0xe0 | ((c >> 12))));
+                    dst.put(dp++, (byte)(0x80 | ((c >>  6) & 0x3f)));
+                    dst.put(dp++, (byte)(0x80 | (c & 0x3f)));
+                    remaining -= 3;
                 }
-                mark++;
             }
-            src.position(mark);
+            src.position(sp);
+            dst.position(dp);
             return CoderResult.UNDERFLOW;
         }
 
@@ -582,33 +574,63 @@ public final class UTF_8 extends Unicode {
                                            sun.nio.RawCharacterProducer producer,
                                            ByteBuffer dst)
         {
-            int copied = producer.copyUTF8(dst, 0, Math.min(src.remaining(), dst.remaining()));
-            int newPosition = src.position() + copied;
-            src.position(newPosition);
             if (!src.hasRemaining()) {
                 return CoderResult.UNDERFLOW;
             }
 
-            if (!dst.hasRemaining())
-                return CoderResult.OVERFLOW;
-
-            char c = src.get();
-            if (Character.isSurrogate(c)) {
-                int mark = src.position();
-                if (sgp == null)
-                    sgp = new Surrogate.Parser();
-                int uc = sgp.parse(c, src);
-                if (uc < 0) {
-                    src.position(mark);
-                    return sgp.error();
+            int sp = src.position();
+            int maxLen = Math.min(src.remaining(), dst.remaining());
+            int ascii = producer.copyAscii(dst, 0, maxLen);
+            if (ascii > 0) {
+                sp += ascii;
+                src.position(sp);
+                if (ascii == maxLen) {
+                    return src.hasRemaining() ? CoderResult.OVERFLOW
+                                              : CoderResult.UNDERFLOW;
                 }
-                assert dst.remaining() < 4;
-                return overflow(src, mark);
-            } 
+                maxLen -= ascii;
+            }
 
-            // this could be a 2 or 3 byte encoded char
-            assert dst.remaining() < 2;
-            return CoderResult.OVERFLOW;
+            //TODO: consider handling next char/code point here
+            int remaining = dst.remaining();
+
+            // if latin 1 process in strides of 8
+            ByteBuffer latin1Bytes = producer.getLatin1Bytes(0, maxLen);
+            if (latin1Bytes != null) {
+                latin1Bytes.order(ByteOrder.BIG_ENDIAN);
+                ByteOrder order = dst.order();
+                dst.order(ByteOrder.BIG_ENDIAN);
+                int dp = dst.position();
+                int bbIdx = 0;
+                for (int  j=maxLen - 7; bbIdx < j && remaining > 7; bbIdx += 8) {
+                    long bytes = latin1Bytes.getLong(bbIdx);
+                    if ((bytes & NON_ASCII_MASK) == 0L) {
+                        dst.putLong(dp, bytes);
+                        remaining -= 8;
+                        dp += 8;
+                    } else {
+                        dst.position(dp);
+                        if (remaining >= 16) {
+                            copy8Latin1ByteUTF8NoRemainingCheck(src, sp + bbIdx, dst);
+                        } else {
+                            int copied = copy8Latin1ByteUTF8(src, sp + bbIdx, dst);
+                            if (copied != 8) {
+                                src.position(sp + bbIdx + copied);
+                                dst.order(order);
+                                return CoderResult.OVERFLOW;
+                            }
+                        }
+                        remaining = dst.remaining();
+                        dp = dst.position();
+                    }
+                }
+                sp += bbIdx;
+                src.position(sp);
+                dst.position(dp);
+                dst.order(order);
+            }
+            
+            return encodeBufferLoop(src, dst);
         }
 
         protected final CoderResult encodeLoop(CharBuffer src,
@@ -617,11 +639,196 @@ public final class UTF_8 extends Unicode {
             if (src instanceof sun.nio.RawCharacterProducer producer)
                 return encodeProducer(src, producer, dst);
 
-            if (dst.hasArray())
-                return src.hasArray() ? encodeArrayLoop(src, dst) : encodeDstArrayLoop(src, dst);
+            if (dst.hasArray() && src.hasArray())
+                return encodeArrayLoop(src, dst);
 
             return encodeBufferLoop(src, dst);
         }
 
+    }
+
+
+    static void copy8Latin1ByteUTF8NoRemainingCheck(ByteBuffer src, int offset, ByteBuffer target) {
+        // assert target.remaining() >= 16;
+        // assert val.length >= offset + 8;
+        int dp = target.position();
+        byte c = src.get(offset);
+        if (c < 0) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+        } else {
+            target.put(dp++, c);
+        }
+
+        c = src.get(offset + 1);
+        if (c < 0) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+        } else {
+            target.put(dp++, c);
+        }
+
+        c = src.get(offset + 2);
+        if (c < 0) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+        } else {
+            target.put(dp++, c);
+        }
+
+        c = src.get(offset + 3);
+        if (c < 0) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+        } else {
+            target.put(dp++, c);
+        }
+
+        c = src.get(offset + 4);
+        if (c < 0) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+        } else {
+            target.put(dp++, c);
+        }
+
+        c = src.get(offset + 5);
+        if (c < 0) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+        } else {
+            target.put(dp++, c);
+        }
+
+        c = src.get(offset + 6);
+        if (c < 0) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+        } else {
+            target.put(dp++, c);
+        }
+
+        c = src.get(offset + 7);
+        if (c < 0) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+        } else {
+            target.put(dp++, c);
+        }
+        target.position(dp);
+    }
+
+
+    static int copy8Latin1ByteUTF8(ByteBuffer src, int offset, ByteBuffer target) {
+        // assert target.remaining() >= 8;
+        // assert val.length >= offset + 8;
+        int dp = target.position();
+        int remaining = target.remaining();
+        byte c = src.get(offset);
+        if (c < 0) {
+            if (remaining == 1) {
+                return 0;
+            }
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+            remaining -= 2;
+        } else {
+            target.put(dp++, c);
+            --remaining;
+        }
+        
+        c = src.get(offset + 1);
+        if (c < 0 && remaining >= 2) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+            remaining -= 2;
+        } else if (remaining >= 1) {
+            target.put(dp++, c);
+            --remaining;
+        } else {
+            target.position(dp);
+            return 1;
+        }
+        
+        c = src.get(offset + 2);
+        if (c < 0 && remaining >= 2) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+            remaining -= 2;
+        } else if (remaining >= 1) {
+            target.put(dp++, c);
+            --remaining;
+        } else {
+            target.position(dp);
+            return 2;
+        }
+        
+        c = src.get(offset + 3);
+        if (c < 0 && remaining >= 2) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+            remaining -= 2;
+        } else if (remaining >= 1) {
+            target.put(dp++, c);
+            --remaining;
+        } else {
+            target.position(dp);
+            return 3;
+        }
+        
+        c = src.get(offset + 4);
+        if (c < 0 && remaining >= 2) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+            remaining -= 2;
+        } else if (remaining >= 1) {
+            target.put(dp++, c);
+            --remaining;
+        } else {
+            target.position(dp);
+            return 4;
+        }
+        
+        c = src.get(offset + 5);
+        if (c < 0 && remaining >= 2) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+            remaining -= 2;
+        } else if (remaining >= 1) {
+            target.put(dp++, c);
+            --remaining;
+        } else {
+            target.position(dp);
+            return 5;
+        }
+        
+        c = src.get(offset + 6);
+        if (c < 0 && remaining >= 2) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+            remaining -= 2;
+        } else if (remaining >= 1) {
+            target.put(dp++, c);
+            --remaining;
+        } else {
+            target.position(dp);
+            return 6;
+        }
+        
+        c = src.get(offset + 7);
+        if (c < 0 && remaining >= 2) {
+            target.put(dp++, (byte)(0xc0 | (c >> 6)));
+            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
+            remaining -= 2;
+        } else if (remaining >= 1) {
+            target.put(dp++, c);
+            --remaining;
+        } else {
+            target.position(dp);
+            return 7;
+        }
+
+        target.position(dp);
+        return 8;
     }
 }

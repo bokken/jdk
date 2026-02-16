@@ -57,6 +57,7 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.ResourceBundle;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -64,24 +65,24 @@ import java.util.function.Supplier;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
+import jdk.internal.access.JavaLangAccess;
+import jdk.internal.access.SharedSecrets;
 import jdk.internal.javac.Restricted;
 import jdk.internal.loader.NativeLibraries;
+import jdk.internal.logger.LazyLoggers;
+import jdk.internal.logger.LocalizedLoggerWrapper;
+import jdk.internal.logger.LoggerFinderLoader;
 import jdk.internal.logger.LoggerFinderLoader.TemporaryLoggerFinder;
 import jdk.internal.misc.Blocker;
 import jdk.internal.misc.CarrierThreadLocal;
-import jdk.internal.util.StaticProperty;
+import jdk.internal.misc.VM;
 import jdk.internal.module.ModuleBootstrap;
 import jdk.internal.module.ServicesCatalog;
 import jdk.internal.reflect.CallerSensitive;
 import jdk.internal.reflect.Reflection;
-import jdk.internal.access.JavaLangAccess;
-import jdk.internal.access.SharedSecrets;
-import jdk.internal.logger.LoggerFinderLoader;
-import jdk.internal.logger.LazyLoggers;
-import jdk.internal.logger.LocalizedLoggerWrapper;
-import jdk.internal.misc.VM;
 import jdk.internal.util.ByteArray;
 import jdk.internal.util.Preconditions;
+import jdk.internal.util.StaticProperty;
 import jdk.internal.util.SystemProps;
 import jdk.internal.vm.Continuation;
 import jdk.internal.vm.ContinuationScope;
@@ -89,9 +90,9 @@ import jdk.internal.vm.StackableScope;
 import jdk.internal.vm.ThreadContainer;
 import jdk.internal.vm.annotation.IntrinsicCandidate;
 import jdk.internal.vm.annotation.Stable;
-import sun.reflect.annotation.AnnotationType;
 import sun.nio.ch.Interruptible;
 import sun.nio.cs.UTF_8;
+import sun.reflect.annotation.AnnotationType;
 
 /**
  * The {@code System} class contains several useful class fields
@@ -2124,9 +2125,18 @@ public final class System {
                 target.put((byte)c);
             }
             return i;
-        }        
+        }
 
         @Override
+        public ByteBuffer getLatin1Bytes(int offset, int len) {
+            Preconditions.checkFromIndexSize(offset, len, string.length(), Preconditions.IOOBE_FORMATTER);
+            if (!string.isLatin1()) {
+                return null;
+            }
+            return ByteBuffer.wrap(string.value()).position(offset).limit(offset + len).slice().asReadOnlyBuffer();
+        }
+
+//        @Override
         public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
             Preconditions.checkFromIndexSize(srcOffset, len, string.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
@@ -2252,6 +2262,15 @@ public final class System {
         }
 
         @Override
+        public ByteBuffer getLatin1Bytes(int offset, int len) {
+            Preconditions.checkFromIndexSize(offset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
+            if (!asb.isLatin1()) {
+                return null;
+            }
+            return ByteBuffer.wrap(asb.value).position(offset).limit(offset + len).slice().asReadOnlyBuffer();
+        }
+
+//        @Override
         public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
             Preconditions.checkFromIndexSize(srcOffset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
