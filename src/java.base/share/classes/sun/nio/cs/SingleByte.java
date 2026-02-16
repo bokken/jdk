@@ -345,10 +345,10 @@ public class SingleByte
                                 b = encode(c);
                                 if (b == UNMAPPABLE_ENCODING) {
                                     src.position(sp + i - 1);
-                                    dst.position(dp);
+                                    dst.position(dp + i - 1);
                                     return sgp.unmappableResult();
                                 } else {
-                                    dst.put(dp++, (byte) b);
+                                    dst.put(dp + i, (byte) b);
                                 }
                             }
                         }

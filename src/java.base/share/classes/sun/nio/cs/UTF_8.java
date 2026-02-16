@@ -611,9 +611,9 @@ public final class UTF_8 extends Unicode {
                     } else {
                         dst.position(dp);
                         if (remaining >= 16) {
-                            copy8Latin1ByteUTF8NoRemainingCheck(latin1Bytes, sp + bbIdx, dst);
+                            copy8Latin1ByteUTF8NoRemainingCheck(latin1Bytes, bbIdx, dst);
                         } else {
-                            int copied = copy8Latin1ByteUTF8(latin1Bytes, sp + bbIdx, dst);
+                            int copied = copy8Latin1ByteUTF8(latin1Bytes, bbIdx, dst);
                             if (copied != 8) {
                                 src.position(sp + bbIdx + copied);
                                 dst.order(order);
