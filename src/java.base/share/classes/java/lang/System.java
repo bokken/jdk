@@ -2033,8 +2033,8 @@ public final class System {
             //is this optimized anywhere?
             int i=0;
             ByteOrder order = target.order();
-            target.order(ByteOrder.BIG_ENDIAN);
-            for (int j = actualLen - 7; i < j; i += 8) {
+            int dp = target.position();
+            for (int j = actualLen - 7; i < j; i += 8, dp += 8) {
                 char c0 = StringUTF16.getChar(val, i + srcOffset);
                 char c1 = StringUTF16.getChar(val, i + srcOffset + 1);
                 char c2 = StringUTF16.getChar(val, i + srcOffset + 2);
@@ -2052,23 +2052,22 @@ public final class System {
                     c6 >= 0x80 ||
                     c7 >= 0x80)
                     break;
-                long word = (c0 & 0xFFL) << 56 |
-                        (c1 & 0xFFL) << 48 |
-                        (c2 & 0xFFL) << 40 |
-                        (c3 & 0xFFL) << 32 |
-                        (c4 & 0xFFL) << 24 |
-                        (c5 & 0xFFL) << 16 |
-                        (c6 & 0xFFL) <<  8 |
-                        (c7 & 0xFFL);
-                target.putLong(word);
+                target.put(dp, (byte) c0);
+                target.put(dp + 1, (byte) c1);
+                target.put(dp + 2, (byte) c2);
+                target.put(dp + 3, (byte) c3);
+                target.put(dp + 4, (byte) c4);
+                target.put(dp + 5, (byte) c5);
+                target.put(dp + 6, (byte) c6);
+                target.put(dp + 7, (byte) c7);
             }
-            target.order(order);
             for (; i<actualLen; ++i) {
                 char c = StringUTF16.getChar(val, i + srcOffset);
                 if (c >= 0x80)
                     break;
-                target.put((byte)c);
+                target.put(dp++, (byte)c);
             }
+            target.position(dp);
             return i;
         }
 
@@ -2087,9 +2086,9 @@ public final class System {
                 return StringCoding.encodeISOArray(val, srcOffset, dst, dp, actualLen);
             }
             // TODO: ideally this can also be made intrinsic
-            int i=0;ByteOrder order = target.order();
-            target.order(ByteOrder.BIG_ENDIAN);
-            for (int j = actualLen - 7; i < j; i += 8) {
+            int i=0;
+            int dp = target.position();
+            for (int j = actualLen - 7; i < j; i += 8, dp += 8) {
                 char c0 = StringUTF16.getChar(val, i + srcOffset);
                 char c1 = StringUTF16.getChar(val, i + srcOffset + 1);
                 char c2 = StringUTF16.getChar(val, i + srcOffset + 2);
@@ -2107,23 +2106,23 @@ public final class System {
                     c6 > '\u00FF' ||
                     c7 > '\u00FF')
                     break;
-                long word = (c0 & 0xFFL) << 56 |
-                            (c1 & 0xFFL) << 48 |
-                            (c2 & 0xFFL) << 40 |
-                            (c3 & 0xFFL) << 32 |
-                            (c4 & 0xFFL) << 24 |
-                            (c5 & 0xFFL) << 16 |
-                            (c6 & 0xFFL) <<  8 |
-                            (c7 & 0xFFL);
-                target.putLong(word);
+                target.put(dp, (byte) c0);
+                target.put(dp + 1, (byte) c1);
+                target.put(dp + 2, (byte) c2);
+                target.put(dp + 3, (byte) c3);
+                target.put(dp + 4, (byte) c4);
+                target.put(dp + 5, (byte) c5);
+                target.put(dp + 6, (byte) c6);
+                target.put(dp + 7, (byte) c7);
             }
-            target.order(order);
+            
             for (; i<actualLen; ++i) {
                 char c = StringUTF16.getChar(val, i + srcOffset);
                 if (c > '\u00FF')
                     break;
-                target.put((byte)c);
+                target.put(dp++, (byte) c);
             }
+            target.position(dp);
             return i;
         }
 
@@ -2227,12 +2226,14 @@ public final class System {
             }
             //is this optimized anywhere?
             int i=0;
+            int dp = target.position();
             for (; i<actualLen; ++i) {
                 char c = StringUTF16.getChar(val, i + srcOffset);
                 if (c >= 0x80)
                     break;
-                target.put((byte)c);
+                target.put(dp++, (byte)c);
             }
+            target.position(dp);
             return i;
         }
 

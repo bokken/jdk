@@ -347,7 +347,7 @@ public class SingleByte
                                 if (b == UNMAPPABLE_ENCODING) {
                                     src.position(sp + i - 1);
                                     dst.position(dp + i - 1);
-                                    return sgp.unmappableResult();
+                                    return CoderResult.unmappableForLength(1);
                                 } else {
                                     dst.put(dp + i, (byte) b);
                                 }

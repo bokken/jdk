@@ -616,6 +616,7 @@ public final class UTF_8 extends Unicode {
                             int copied = copy8Latin1ByteUTF8(latin1Bytes, bbIdx, dst);
                             if (copied != 8) {
                                 src.position(sp + bbIdx + copied);
+                                dst.position(dp + bbIdx + copied);
                                 dst.order(order);
                                 return CoderResult.OVERFLOW;
                             }
