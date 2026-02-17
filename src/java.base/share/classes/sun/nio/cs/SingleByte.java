@@ -330,8 +330,8 @@ public class SingleByte
                 --maxLen;
 
                 // now if the source is latin 1 we will process in strides of 8 bytes at a time
-                ByteBuffer latin1Bytes = producer.getLatin1Bytes(1, maxLen);
-                if (latin1Bytes != null) {
+                if (producer.isLatin1()) {
+                    ByteBuffer latin1Bytes = producer.getLatin1Bytes(1, maxLen);
                     int bbIdx = 0;
                     latin1Bytes.order(ByteOrder.BIG_ENDIAN);
                     ByteOrder order = dst.order();

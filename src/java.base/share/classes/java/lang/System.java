@@ -2263,12 +2263,26 @@ public final class System {
         }
 
         @Override
+        public boolean isLatin1() {
+            return asp.isLatin1();
+        }
+
+        @Override
         public ByteBuffer getLatin1Bytes(int offset, int len) {
-            Preconditions.checkFromIndexSize(offset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
             if (!asb.isLatin1()) {
-                return null;
+                throw new IllegalStateException();
             }
+            Preconditions.checkFromIndexSize(offset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
             return ByteBuffer.wrap(asb.value).position(offset).limit(offset + len).slice().asReadOnlyBuffer();
+        }
+
+        @Override
+        public ByteBuffer getUTF16Bytes(int offset, int len) {
+            if (asb.isLatin1()) {
+                throw new IllegalStateException();
+            }
+            Preconditions.checkFromIndexSize(offset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
+            return ByteBuffer.wrap(asb.value).position(offset << 1).limit((offset + len) << 1).slice().asReadOnlyBuffer().order(ByteOrder.nativeOrder());
         }
 
 //        @Override

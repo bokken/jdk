@@ -60,9 +60,20 @@ final class CharProducerCharBuffer extends StringCharBuffer implements sun.nio.R
     }
 
     @Override
+    public boolean isLatin1() {
+        return producer.isLatin1();
+    }
+
+    @Override
     public ByteBuffer getLatin1Bytes(int srcOffset, int len) {
         int position = offset + position();
         return producer.getLatin1Bytes(srcOffset + position, Math.min(len, remaining()));
+    }
+
+    @Override
+    public ByteBuffer getUTF16Bytes(int offset, int len) {
+        int position = offset + position();
+        return producer.getUTF16Bytes(srcOffset + position, Math.min(len, remaining()));
     }
 
 //    @Override

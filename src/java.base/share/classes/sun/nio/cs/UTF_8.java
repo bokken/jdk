@@ -592,14 +592,15 @@ public final class UTF_8 extends Unicode {
             }
 
             //TODO: consider handling next char/code point here
-            int remaining = dst.remaining();
 
-            // if latin 1 process in strides of 8
-            ByteBuffer latin1Bytes = producer.getLatin1Bytes(0, maxLen);
-            if (latin1Bytes != null) {
+            if (producer.isLatin1()) {
+                // if latin 1 process in strides of 8
+                ByteBuffer latin1Bytes = producer.getLatin1Bytes(0, maxLen);
+
                 latin1Bytes.order(ByteOrder.BIG_ENDIAN);
                 ByteOrder order = dst.order();
                 dst.order(ByteOrder.BIG_ENDIAN);
+                int remaining = dst.remaining();
                 int dp = dst.position();
                 int bbIdx = 0;
                 for (int  j=maxLen - 7; bbIdx < j && remaining > 7; bbIdx += 8) {
@@ -625,13 +626,34 @@ public final class UTF_8 extends Unicode {
                         dp = dst.position();
                     }
                 }
+                while(bbIdx < maxLen && remaining > 0) {
+                    byte c = latin1Bytes.get(bbIdx);
+                    if (c < 0) {
+                        if (remaining == 1) {
+                            break;
+                        }
+                        dst.put(dp++, (byte)(0xc0 | (c >> 6)));
+                        dst.put(dp++, (byte)(0x80 | (c & 0x3f)));
+                        remaining -= 2;
+                    } else {
+                        dst.put(dp++, c);
+                        --remaining;
+                    }
+                    ++bbIdx;
+                }
                 sp += bbIdx;
                 src.position(sp);
                 dst.position(dp);
                 dst.order(order);
+
+            } else {
+                CharBuffer cb = producer.getUTF16Bytes(0, maxLen).asCharBuffer();
+                CoderResult result = encodeBufferLoop(cb, dst);
+                src.position(sp + cb.position());
             }
-            
-            return encodeBufferLoop(src, dst);
+
+            return src.hasRemaining() ? CoderResult.OVERFLOW
+                                      : CoderResult.UNDERFLOW;
         }
 
         protected final CoderResult encodeLoop(CharBuffer src,
@@ -820,10 +842,8 @@ public final class UTF_8 extends Unicode {
         if (c < 0 && remaining >= 2) {
             target.put(dp++, (byte)(0xc0 | (c >> 6)));
             target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-            remaining -= 2;
         } else if (remaining >= 1) {
             target.put(dp++, c);
-            --remaining;
         } else {
             target.position(dp);
             return 7;

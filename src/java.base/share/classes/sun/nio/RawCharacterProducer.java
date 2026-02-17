@@ -48,5 +48,8 @@ public interface RawCharacterProducer {
     int copyAscii(ByteBuffer target, int offset, int len);
     int copyLatin1(ByteBuffer target, int offset, int len);
 
+    boolean isLatin1();
+
     ByteBuffer getLatin1Bytes(int offset, int len);
+    ByteBuffer getUTF16Bytes(int offset, int len);
 }
