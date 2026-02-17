@@ -2142,7 +2142,7 @@ public final class System {
 
         @Override
         public ByteBuffer getUTF16Bytes(int offset, int len) {
-            if (String.isLatin1()) {
+            if (string.isLatin1()) {
                 throw new IllegalStateException();
             }
             Preconditions.checkFromIndexSize(offset, len, string.length(), Preconditions.IOOBE_FORMATTER);
