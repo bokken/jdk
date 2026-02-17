@@ -2127,12 +2127,26 @@ public final class System {
         }
 
         @Override
+        public boolean isLatin1() {
+            return string.isLatin1();
+        }
+
+        @Override
         public ByteBuffer getLatin1Bytes(int offset, int len) {
-            Preconditions.checkFromIndexSize(offset, len, string.length(), Preconditions.IOOBE_FORMATTER);
             if (!string.isLatin1()) {
-                return null;
+                throw new IllegalStateException();
             }
+            Preconditions.checkFromIndexSize(offset, len, string.length(), Preconditions.IOOBE_FORMATTER);
             return ByteBuffer.wrap(string.value()).position(offset).limit(offset + len).slice().asReadOnlyBuffer();
+        }
+
+        @Override
+        public ByteBuffer getUTF16Bytes(int offset, int len) {
+            if (String.isLatin1()) {
+                throw new IllegalStateException();
+            }
+            Preconditions.checkFromIndexSize(offset, len, string.length(), Preconditions.IOOBE_FORMATTER);
+            return ByteBuffer.wrap(string.value()).position(offset << 1).limit((offset + len) << 1).slice().asReadOnlyBuffer().order(ByteOrder.nativeOrder());
         }
 
 //        @Override

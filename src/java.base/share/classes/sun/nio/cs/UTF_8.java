@@ -521,7 +521,7 @@ public final class UTF_8 extends Unicode {
             int sp = src.position();
             int dp = dst.position();
             int remaining = dst.remaining();
-            int sl = sp + src.remaining();
+            int sl = src.limit();
             while (sp < sl) {
                 char c = src.get(sp++);
                 if (c < 0x80) {
