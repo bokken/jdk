@@ -2264,7 +2264,7 @@ public final class System {
 
         @Override
         public boolean isLatin1() {
-            return asp.isLatin1();
+            return asb.isLatin1();
         }
 
         @Override
