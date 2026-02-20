@@ -312,6 +312,7 @@ public class SingleByte
                 char c = src.get(sp++);
                 int b = encode(c);
                 if (b == UNMAPPABLE_ENCODING) {
+                    src.position(sp);
                     if (Character.isSurrogate(c)) {
                         if (sgp == null)
                             sgp = new Surrogate.Parser();

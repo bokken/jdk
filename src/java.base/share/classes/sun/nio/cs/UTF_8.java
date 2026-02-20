@@ -592,6 +592,10 @@ public final class UTF_8 extends Unicode {
             }
 
             //TODO: consider handling next char/code point here
+            int remaining = dst.remaining();
+            if (remaining < 2) {
+                return CoderResult.OVERFLOW;
+            }
 
             if (producer.isLatin1()) {
                 // if latin 1 process in strides of 8
@@ -600,9 +604,15 @@ public final class UTF_8 extends Unicode {
                 latin1Bytes.order(ByteOrder.BIG_ENDIAN);
                 ByteOrder order = dst.order();
                 dst.order(ByteOrder.BIG_ENDIAN);
-                int remaining = dst.remaining();
-                int dp = dst.position();
+
+                // we know the next byte is not ascii
                 int bbIdx = 0;
+                int dp = dst.position();
+                byte c = latin1Bytes.get(bbIdx++);
+                dst.put(dp++, (byte)(0xc0 | (c >> 6)));
+                dst.put(dp++, (byte)(0x80 | (c & 0x3f)));
+                remaining -= 2;
+                
                 for (int  j=maxLen - 7; bbIdx < j && remaining > 7; bbIdx += 8) {
                     long bytes = latin1Bytes.getLong(bbIdx);
                     if ((bytes & NON_ASCII_MASK) == 0L) {
@@ -627,7 +637,7 @@ public final class UTF_8 extends Unicode {
                     }
                 }
                 while(bbIdx < maxLen && remaining > 0) {
-                    byte c = latin1Bytes.get(bbIdx);
+                    c = latin1Bytes.get(bbIdx);
                     if (c < 0) {
                         if (remaining == 1) {
                             break;
