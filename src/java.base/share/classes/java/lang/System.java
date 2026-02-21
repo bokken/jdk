@@ -2097,7 +2097,7 @@ public final class System {
                 throw new IllegalStateException();
             }
             Preconditions.checkFromIndexSize(offset, len, object.length(), Preconditions.IOOBE_FORMATTER);
-            return ByteBuffer.wrap(asb.value).position(offset).limit(offset + len).slice().asReadOnlyBuffer();
+            return ByteBuffer.wrap(value.apply(object)).position(offset).limit(offset + len).slice().asReadOnlyBuffer();
         }
 
 //        @Override
