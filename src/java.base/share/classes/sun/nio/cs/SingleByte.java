@@ -363,15 +363,51 @@ public class SingleByte
                 dst.position(dp);
             }
 
+            if (dst.hasArray()) {
+                return encodeDstArrayLoop(src, dst);
+            }
+
             return encodeBufferLoop(src, dst);
+        }
+
+        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
+            int sp = src.position();
+            int dp = dst.position();
+            int len = Math.min(src.remaining(), dst.remaining());
+            byte[] da = dst.array();
+            int dstOffset = dst.arrayOffset();
+            dp += dstOffset;
+            int i=0;
+            for (; i<len; ++i) {
+                char c = src.get(sp + i);
+                int b = encode(c);
+                if (b == UNMAPPABLE_ENCODING) {
+                    src.position(sp + i + 1);
+                    if (Character.isSurrogate(c)) {
+                        if (sgp == null)
+                            sgp = new Surrogate.Parser();
+                        int uc = sgp.parse(c, src);
+                        src.position(sp + i);
+                        if (uc < 0)
+                            return sgp.error();
+                        return sgp.unmappableResult();
+                    }
+                    return CoderResult.unmappableForLength(1);
+                }
+                da[dp + i] = (byte)b;
+            }
+            dp -= dstOffset;
+            src.position(sp + i);
+            dst.position(dp + i);
+            return src.hasRemaining() ? CoderResult.OVERFLOW : CoderResult.UNDERFLOW;
         }
 
         protected CoderResult encodeLoop(CharBuffer src, ByteBuffer dst) {
             if (src instanceof sun.nio.RawCharacterProducer producer)
                 return encodeProducer(src, producer, dst);
 
-            if (dst.hasArray() && src.hasArray())
-                return encodeArrayLoop(src, dst);
+            if (dst.hasArray())
+                return src.hasArray() ? encodeArrayLoop(src, dst) : encodeDstArrayLoop(src, dst);
 
             return encodeBufferLoop(src, dst);
         }

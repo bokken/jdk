@@ -51,5 +51,4 @@ public interface RawCharacterProducer {
     boolean isLatin1();
 
     ByteBuffer getLatin1Bytes(int offset, int len);
-    ByteBuffer getUTF16Bytes(int offset, int len);
 }
