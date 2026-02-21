@@ -2016,7 +2016,7 @@ public final class System {
 
         @Override
         public int copyAscii(ByteBuffer target, int srcOffset, int len) {
-            Preconditions.checkFromIndexSize(srcOffset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
+            Preconditions.checkFromIndexSize(srcOffset, len, object.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
             byte[] val = value.apply(object);
             if (isLatin1.test(object)) {
@@ -2063,7 +2063,7 @@ public final class System {
 
         @Override
         public int copyLatin1(ByteBuffer target, int srcOffset, int len) {
-            Preconditions.checkFromIndexSize(srcOffset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
+            Preconditions.checkFromIndexSize(srcOffset, len, object.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
             byte[] val = value.apply(object);
             if (isLatin1.test(object)) {
@@ -2096,7 +2096,7 @@ public final class System {
             if (!isLatin1.test(object)) {
                 throw new IllegalStateException();
             }
-            Preconditions.checkFromIndexSize(offset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
+            Preconditions.checkFromIndexSize(offset, len, object.length(), Preconditions.IOOBE_FORMATTER);
             return ByteBuffer.wrap(asb.value).position(offset).limit(offset + len).slice().asReadOnlyBuffer();
         }
 
@@ -2111,7 +2111,7 @@ public final class System {
 
 //        @Override
         public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
-            Preconditions.checkFromIndexSize(srcOffset, len, asb.length(), Preconditions.IOOBE_FORMATTER);
+            Preconditions.checkFromIndexSize(srcOffset, len, object.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
             byte[] val = value.apply(object);
             if (isLatin1.test(object)) {
