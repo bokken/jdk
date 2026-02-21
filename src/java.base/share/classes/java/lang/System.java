@@ -2032,34 +2032,21 @@ public final class System {
             }
             //is this optimized anywhere?
             int i=0;
-            ByteOrder order = target.order();
             int dp = target.position();
-            for (int j = actualLen - 7; i < j; i += 8, dp += 8) {
+            for (int j = actualLen - 3; i < j; i += 4, dp += 4) {
                 char c0 = StringUTF16.getChar(val, i + srcOffset);
                 char c1 = StringUTF16.getChar(val, i + srcOffset + 1);
                 char c2 = StringUTF16.getChar(val, i + srcOffset + 2);
                 char c3 = StringUTF16.getChar(val, i + srcOffset + 3);
-                char c4 = StringUTF16.getChar(val, i + srcOffset + 4);
-                char c5 = StringUTF16.getChar(val, i + srcOffset + 5);
-                char c6 = StringUTF16.getChar(val, i + srcOffset + 6);
-                char c7 = StringUTF16.getChar(val, i + srcOffset + 7);
                 if (c0 >= 0x80 ||
                     c1 >= 0x80 ||
                     c2 >= 0x80 ||
-                    c3 >= 0x80 ||
-                    c4 >= 0x80 ||
-                    c5 >= 0x80 ||
-                    c6 >= 0x80 ||
-                    c7 >= 0x80)
+                    c3 >= 0x80)
                     break;
                 target.put(dp, (byte) c0);
                 target.put(dp + 1, (byte) c1);
                 target.put(dp + 2, (byte) c2);
                 target.put(dp + 3, (byte) c3);
-                target.put(dp + 4, (byte) c4);
-                target.put(dp + 5, (byte) c5);
-                target.put(dp + 6, (byte) c6);
-                target.put(dp + 7, (byte) c7);
             }
             for (; i<actualLen; ++i) {
                 char c = StringUTF16.getChar(val, i + srcOffset);
@@ -2088,34 +2075,6 @@ public final class System {
             // TODO: ideally this can also be made intrinsic
             int i=0;
             int dp = target.position();
-            for (int j = actualLen - 7; i < j; i += 8, dp += 8) {
-                char c0 = StringUTF16.getChar(val, i + srcOffset);
-                char c1 = StringUTF16.getChar(val, i + srcOffset + 1);
-                char c2 = StringUTF16.getChar(val, i + srcOffset + 2);
-                char c3 = StringUTF16.getChar(val, i + srcOffset + 3);
-                char c4 = StringUTF16.getChar(val, i + srcOffset + 4);
-                char c5 = StringUTF16.getChar(val, i + srcOffset + 5);
-                char c6 = StringUTF16.getChar(val, i + srcOffset + 6);
-                char c7 = StringUTF16.getChar(val, i + srcOffset + 7);
-                if (c0 > '\u00FF' ||
-                    c1 > '\u00FF' ||
-                    c2 > '\u00FF' ||
-                    c3 > '\u00FF' ||
-                    c4 > '\u00FF' ||
-                    c5 > '\u00FF' ||
-                    c6 > '\u00FF' ||
-                    c7 > '\u00FF')
-                    break;
-                target.put(dp, (byte) c0);
-                target.put(dp + 1, (byte) c1);
-                target.put(dp + 2, (byte) c2);
-                target.put(dp + 3, (byte) c3);
-                target.put(dp + 4, (byte) c4);
-                target.put(dp + 5, (byte) c5);
-                target.put(dp + 6, (byte) c6);
-                target.put(dp + 7, (byte) c7);
-            }
-            
             for (; i<actualLen; ++i) {
                 char c = StringUTF16.getChar(val, i + srcOffset);
                 if (c > '\u00FF')
@@ -2241,6 +2200,21 @@ public final class System {
             //is this optimized anywhere?
             int i=0;
             int dp = target.position();
+            for (int j = actualLen - 3; i < j; i += 4, dp += 4) {
+                char c0 = StringUTF16.getChar(val, i + srcOffset);
+                char c1 = StringUTF16.getChar(val, i + srcOffset + 1);
+                char c2 = StringUTF16.getChar(val, i + srcOffset + 2);
+                char c3 = StringUTF16.getChar(val, i + srcOffset + 3);
+                if (c0 >= 0x80 ||
+                    c1 >= 0x80 ||
+                    c2 >= 0x80 ||
+                    c3 >= 0x80)
+                    break;
+                target.put(dp, (byte) c0);
+                target.put(dp + 1, (byte) c1);
+                target.put(dp + 2, (byte) c2);
+                target.put(dp + 3, (byte) c3);
+            }
             for (; i<actualLen; ++i) {
                 char c = StringUTF16.getChar(val, i + srcOffset);
                 if (c >= 0x80)

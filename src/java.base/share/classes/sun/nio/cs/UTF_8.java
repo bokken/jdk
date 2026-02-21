@@ -28,6 +28,7 @@ package sun.nio.cs;
 import jdk.internal.access.JavaLangAccess;
 import jdk.internal.access.SharedSecrets;
 import jdk.internal.util.ByteArray;
+import jdk.internal.vm.annotation.ForceInline;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
@@ -591,7 +592,6 @@ public final class UTF_8 extends Unicode {
                 maxLen -= ascii;
             }
 
-            //TODO: consider handling next char/code point here
             int remaining = dst.remaining();
             if (remaining < 2) {
                 return CoderResult.OVERFLOW;
@@ -608,9 +608,9 @@ public final class UTF_8 extends Unicode {
                 // we know the next byte is not ascii
                 int bbIdx = 0;
                 int dp = dst.position();
-                byte c = latin1Bytes.get(bbIdx++);
-                dst.put(dp++, (byte)(0xc0 | (c >> 6)));
-                dst.put(dp++, (byte)(0x80 | (c & 0x3f)));
+                int b = latin1Bytes.get(bbIdx++) & 0xFF;
+                dst.put(dp++, (byte) (0xC0 | (b >>> 6)));
+                dst.put(dp++, (byte) (0x80 | (b & 0x3F)));
                 remaining -= 2;
                 
                 for (int  j=maxLen - 7; bbIdx < j && remaining > 7; bbIdx += 8) {
@@ -622,9 +622,9 @@ public final class UTF_8 extends Unicode {
                     } else {
                         dst.position(dp);
                         if (remaining >= 16) {
-                            copy8Latin1ByteUTF8NoRemainingCheck(latin1Bytes, bbIdx, dst);
+                            copy8Latin1ByteUTF8NoRemainingCheck(bytes, dst);
                         } else {
-                            int copied = copy8Latin1ByteUTF8(latin1Bytes, bbIdx, dst);
+                            int copied = copy8Latin1ByteUTF8(bytes, dst);
                             if (copied != 8) {
                                 src.position(sp + bbIdx + copied);
                                 // no need to set dst position because that was maintained in copy8Latin1ByteUTF8
@@ -636,18 +636,19 @@ public final class UTF_8 extends Unicode {
                         dp = dst.position();
                     }
                 }
-                while(bbIdx < maxLen && remaining > 0) {
-                    c = latin1Bytes.get(bbIdx);
-                    if (c < 0) {
+                while (bbIdx < maxLen && remaining > 0) {
+                    b = latin1Bytes.get(bbIdx) & 0xFF;
+
+                    if (b >= 0x80) {
                         if (remaining == 1) {
                             break;
                         }
-                        dst.put(dp++, (byte)(0xc0 | (c >> 6)));
-                        dst.put(dp++, (byte)(0x80 | (c & 0x3f)));
+                        dst.put(dp++, (byte) (0xC0 | (b >>> 6)));
+                        dst.put(dp++, (byte) (0x80 | (b & 0x3F)));
                         remaining -= 2;
                     } else {
-                        dst.put(dp++, c);
-                        --remaining;
+                        dst.put(dp++, (byte) b);
+                        remaining -= 1;
                     }
                     ++bbIdx;
                 }
@@ -656,14 +657,11 @@ public final class UTF_8 extends Unicode {
                 dst.position(dp);
                 dst.order(order);
 
-            } else {
-                CharBuffer cb = producer.getUTF16Bytes(0, maxLen).asCharBuffer();
-                CoderResult result = encodeBufferLoop(cb, dst);
-                src.position(sp + cb.position());
+                return src.hasRemaining() ? CoderResult.OVERFLOW
+                        : CoderResult.UNDERFLOW;
             }
 
-            return src.hasRemaining() ? CoderResult.OVERFLOW
-                                      : CoderResult.UNDERFLOW;
+            return encodeBufferLoop(src, dst);
         }
 
         protected final CoderResult encodeLoop(CharBuffer src,
@@ -680,180 +678,101 @@ public final class UTF_8 extends Unicode {
 
     }
 
-
-    static void copy8Latin1ByteUTF8NoRemainingCheck(ByteBuffer src, int offset, ByteBuffer target) {
+    static void copy8Latin1ByteUTF8NoRemainingCheck(long word, ByteBuffer target) {
         // assert target.remaining() >= 16;
-        // assert val.length >= offset + 8;
+        // having at least 16 bytes remaining means we need no check
         int dp = target.position();
-        byte c = src.get(offset);
-        if (c < 0) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-        } else {
-            target.put(dp++, c);
-        }
-
-        c = src.get(offset + 1);
-        if (c < 0) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-        } else {
-            target.put(dp++, c);
-        }
-
-        c = src.get(offset + 2);
-        if (c < 0) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-        } else {
-            target.put(dp++, c);
-        }
-
-        c = src.get(offset + 3);
-        if (c < 0) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-        } else {
-            target.put(dp++, c);
-        }
-
-        c = src.get(offset + 4);
-        if (c < 0) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-        } else {
-            target.put(dp++, c);
-        }
-
-        c = src.get(offset + 5);
-        if (c < 0) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-        } else {
-            target.put(dp++, c);
-        }
-
-        c = src.get(offset + 6);
-        if (c < 0) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-        } else {
-            target.put(dp++, c);
-        }
-
-        c = src.get(offset + 7);
-        if (c < 0) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-        } else {
-            target.put(dp++, c);
-        }
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 56) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 48) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 40) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 32) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 24) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 16) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 8) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) (word & 0xFF), target, dp);
         target.position(dp);
     }
-
-
-    static int copy8Latin1ByteUTF8(ByteBuffer src, int offset, ByteBuffer target) {
-        // assert target.remaining() >= 8;
-        // assert val.length >= offset + 8;
-        int dp = target.position();
-        int remaining = target.remaining();
-        byte c = src.get(offset);
-        if (c < 0) {
-            if (remaining == 1) {
-                return 0;
-            }
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-            remaining -= 2;
-        } else {
-            target.put(dp++, c);
-            --remaining;
-        }
-        
-        c = src.get(offset + 1);
-        if (c < 0 && remaining >= 2) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(dp++, c);
-            --remaining;
-        } else {
-            target.position(dp);
+    
+    @ForceInline
+    private static int putLatin1AsUtf8NoCheck(int b, ByteBuffer target, int dp) {
+        if (b < 0x80) {
+            target.put(dp, (byte) b);
             return 1;
         }
+
+        target.put(dp, (byte) (0xC0 | (b >>> 6)));
+        target.put(dp + 1, (byte) (0x80 | (b & 0x3F)));
+
+        return 2;
+    }
+
+    static int copy8Latin1ByteUTF8(long word, ByteBuffer target) {
+        // assert target.remaining() >=8;
+        // this guarantees at least first 4 bytes can be written without a check
+        int dp = target.position();
+        int remaining = target.remaining();
         
-        c = src.get(offset + 2);
-        if (c < 0 && remaining >= 2) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(dp++, c);
-            --remaining;
-        } else {
-            target.position(dp);
-            return 2;
-        }
+        int bytes = putLatin1AsUtf8NoCheck((int) ((word >>> 56) & 0xFF), target, dp);
+        dp += bytes;
+        remaining -= bytes;
         
-        c = src.get(offset + 3);
-        if (c < 0 && remaining >= 2) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(dp++, c);
-            --remaining;
-        } else {
-            target.position(dp);
-            return 3;
-        }
+        bytes = putLatin1AsUtf8NoCheck((int) ((word >>> 48) & 0xFF), target, dp);
+        dp += bytes;
+        remaining -= bytes;
+
+        bytes = putLatin1AsUtf8NoCheck((int) ((word >>> 40) & 0xFF), target, dp);
+        dp += bytes;
+        remaining -= bytes;
         
-        c = src.get(offset + 4);
-        if (c < 0 && remaining >= 2) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(dp++, c);
+        bytes = putLatin1AsUtf8NoCheck((int) ((word >>> 32) & 0xFF), target, dp);
+        dp += bytes;
+        remaining -= bytes;
+        
+        int b = (int) ((word >>> 24) & 0xFF);
+        if (b < 0x80 && remaining >= 1) {
+            target.put(dp++, (byte) b);
             --remaining;
+        } else if (remaining >= 2) {
+            target.put(dp++, (byte) (0xC0 | (b >>> 6)));
+            target.put(dp++, (byte) (0x80 | (b & 0x3F)));
+            remaining -= 2;
         } else {
             target.position(dp);
             return 4;
         }
         
-        c = src.get(offset + 5);
-        if (c < 0 && remaining >= 2) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(dp++, c);
+        b = (int) ((word >>> 16) & 0xFF);
+        if (b < 0x80 && remaining >= 1) {
+            target.put(dp++, (byte) b);
             --remaining;
+        } else if (remaining >= 2) {
+            target.put(dp++, (byte) (0xC0 | (b >>> 6)));
+            target.put(dp++, (byte) (0x80 | (b & 0x3F)));
+            remaining -= 2;
         } else {
             target.position(dp);
             return 5;
         }
         
-        c = src.get(offset + 6);
-        if (c < 0 && remaining >= 2) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(dp++, c);
+        b = (int) ((word >>> 8) & 0xFF);
+        if (b < 0x80 && remaining >= 1) {
+            target.put(dp++, (byte) b);
             --remaining;
+        } else if (remaining >= 2) {
+            target.put(dp++, (byte) (0xC0 | (b >>> 6)));
+            target.put(dp++, (byte) (0x80 | (b & 0x3F)));
+            remaining -= 2;
         } else {
             target.position(dp);
             return 6;
         }
         
-        c = src.get(offset + 7);
-        if (c < 0 && remaining >= 2) {
-            target.put(dp++, (byte)(0xc0 | (c >> 6)));
-            target.put(dp++, (byte)(0x80 | (c & 0x3f)));
-        } else if (remaining >= 1) {
-            target.put(dp++, c);
+        b = (int) (word & 0xFF);
+        if (b < 0x80 && remaining >= 1) {
+            target.put(dp++, (byte) b);
+        } else if (remaining >= 2) {
+            target.put(dp++, (byte) (0xC0 | (b >>> 6)));
+            target.put(dp++, (byte) (0x80 | (b & 0x3F)));
         } else {
             target.position(dp);
             return 7;
