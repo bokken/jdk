@@ -661,7 +661,66 @@ public final class UTF_8 extends Unicode {
                         : CoderResult.UNDERFLOW;
             }
 
-            return encodeBufferLoop(src, dst);
+            return dst.hasArray() ? encodeDstArrayLoop(src, dst)
+                                  : encodeBufferLoop(src, dst);
+        }
+
+        private CoderResult encodeDstArrayLoop(CharBuffer src,
+                                               ByteBuffer dst)
+        {
+            // only called if already checked to have an array
+            byte[] da = dst.array();
+            int sp = src.position();
+            int dp = dst.position() + dst.arrayOffset();
+            int remaining = dst.remaining();
+            int sl = src.limit();
+            while (sp < sl) {
+                char c = src.get(sp++);
+                if (c < 0x80) {
+                    // Have at most seven bits
+                    if (remaining == 0)
+                        return overflow(src, sp - 1, dst, dp);
+                    da[dp++] = (byte) c;
+                    --remaining;
+                } else if (c < 0x800) {
+                    // 2 bytes, 11 bits
+                    if (remaining < 2)
+                        return overflow(src, sp - 1, dst, dp);
+                    da[dp++] = (byte)(0xc0 | (c >> 6));
+                    da[dp++] = (byte)(0x80 | (c & 0x3f));
+                    remaining -= 2;
+                } else if (Character.isSurrogate(c)) {
+                    // Have a surrogate pair
+                    if (sgp == null)
+                        sgp = new Surrogate.Parser();
+                    src.position(sp);
+                    int uc = sgp.parse(c, src);
+                    if (uc < 0) {
+                        dst.position(dp - dst.arrayOffset());
+                        src.position(sp - 1);
+                        return sgp.error();
+                    }
+                    if (remaining < 4)
+                        return overflow(src, sp - 1, dst, dp);
+                    da[dp++] = (byte)(0xf0 | ((uc >> 18)));
+                    da[dp++] = (byte)(0x80 | ((uc >> 12) & 0x3f));
+                    da[dp++] = (byte)(0x80 | ((uc >>  6) & 0x3f));
+                    da[dp++] = (byte)(0x80 | (uc & 0x3f));
+                    sp++;  // 2 chars
+                    remaining -= 4;
+                } else {
+                    // 3 bytes, 16 bits
+                    if (remaining < 3)
+                        return overflow(src, sp - 1, dst, dp);
+                    da[dp++] = (byte)(0xe0 | ((c >> 12)));
+                    da[dp++] = (byte)(0x80 | ((c >>  6) & 0x3f));
+                    da[dp++] = (byte)(0x80 | (c & 0x3f));
+                    remaining -= 3;
+                }
+            }
+            src.position(sp);
+            dst.position(dp - dst.arrayOffset());
+            return CoderResult.UNDERFLOW;
         }
 
         protected final CoderResult encodeLoop(CharBuffer src,

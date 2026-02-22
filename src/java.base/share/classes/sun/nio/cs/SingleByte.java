@@ -372,33 +372,31 @@ public class SingleByte
 
         private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
             int sp = src.position();
-            int dp = dst.position();
-            int len = Math.min(src.remaining(), dst.remaining());
             byte[] da = dst.array();
             int dstOffset = dst.arrayOffset();
-            dp += dstOffset;
-            int i=0;
-            for (; i<len; ++i) {
-                char c = src.get(sp + i);
+            int dp = dst.position() + dstOffset;
+            int sl = sp + Math.min(src.remaining(), dst.remaining());
+            while (sp < sl) {
+                char c = src.get(sp++);
                 int b = encode(c);
                 if (b == UNMAPPABLE_ENCODING) {
-                    src.position(sp + i + 1);
+                    src.position(sp);
                     if (Character.isSurrogate(c)) {
                         if (sgp == null)
                             sgp = new Surrogate.Parser();
                         int uc = sgp.parse(c, src);
-                        src.position(sp + i);
+                        src.position(sp - 1);
+                        dst.position(dp - dstOffset);
                         if (uc < 0)
                             return sgp.error();
                         return sgp.unmappableResult();
                     }
                     return CoderResult.unmappableForLength(1);
                 }
-                da[dp + i] = (byte)b;
+                da[dp++] = (byte)b;
             }
-            dp -= dstOffset;
-            src.position(sp + i);
-            dst.position(dp + i);
+            src.position(sp);
+            dst.position(dp - dstOffset);
             return src.hasRemaining() ? CoderResult.OVERFLOW : CoderResult.UNDERFLOW;
         }
 
