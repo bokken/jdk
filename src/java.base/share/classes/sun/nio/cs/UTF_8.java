@@ -678,14 +678,18 @@ public final class UTF_8 extends Unicode {
                 char c = src.get(sp++);
                 if (c < 0x80) {
                     // Have at most seven bits
-                    if (remaining == 0)
-                        return overflow(src, sp - 1, dst, dp);
+                    if (remaining == 0) {
+                        dst.position(dp - dst.arrayOffset());
+                        return overflow(src, sp - 1);
+                    }
                     da[dp++] = (byte) c;
                     --remaining;
                 } else if (c < 0x800) {
                     // 2 bytes, 11 bits
-                    if (remaining < 2)
-                        return overflow(src, sp - 1, dst, dp);
+                    if (remaining < 2) {
+                        dst.position(dp - dst.arrayOffset());
+                        return overflow(src, sp - 1);
+                    }
                     da[dp++] = (byte)(0xc0 | (c >> 6));
                     da[dp++] = (byte)(0x80 | (c & 0x3f));
                     remaining -= 2;
@@ -700,8 +704,10 @@ public final class UTF_8 extends Unicode {
                         src.position(sp - 1);
                         return sgp.error();
                     }
-                    if (remaining < 4)
-                        return overflow(src, sp - 1, dst, dp);
+                    if (remaining < 4) {
+                        dst.position(dp - dst.arrayOffset());
+                        return overflow(src, sp - 1);
+                    }
                     da[dp++] = (byte)(0xf0 | ((uc >> 18)));
                     da[dp++] = (byte)(0x80 | ((uc >> 12) & 0x3f));
                     da[dp++] = (byte)(0x80 | ((uc >>  6) & 0x3f));
@@ -710,8 +716,10 @@ public final class UTF_8 extends Unicode {
                     remaining -= 4;
                 } else {
                     // 3 bytes, 16 bits
-                    if (remaining < 3)
-                        return overflow(src, sp - 1, dst, dp);
+                    if (remaining < 3) {
+                        dst.position(dp - dst.arrayOffset());
+                        return overflow(src, sp - 1);
+                    }
                     da[dp++] = (byte)(0xe0 | ((c >> 12)));
                     da[dp++] = (byte)(0x80 | ((c >>  6) & 0x3f));
                     da[dp++] = (byte)(0x80 | (c & 0x3f));
