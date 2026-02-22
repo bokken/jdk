@@ -421,8 +421,6 @@ public final class UTF_8 extends Unicode {
 
         private static final long NON_ASCII_MASK = 0x8080808080808080L;
 
-        private char[] buffer;
-
         private Encoder(Charset cs) {
             super(cs, 1.1f, 3.0f);
         }
@@ -668,11 +666,9 @@ public final class UTF_8 extends Unicode {
         }
 
         private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
-            if (buffer == null) {
-                buffer = new char[512];
-            }
-            CharBuffer tempCB = CharBuffer.wrap(buffer);
             int remaining = src.remaining();
+            char[] buffer = new char[Math.min(512, remaining)];
+            CharBuffer tempCB = CharBuffer.wrap(buffer);
             while (remaining > 0) {
                 int position = src.position();
                 int length = Math.min(tempCB.capacity(), remaining);
