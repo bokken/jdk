@@ -421,6 +421,8 @@ public final class UTF_8 extends Unicode {
 
         private static final long NON_ASCII_MASK = 0x8080808080808080L;
 
+        private char[] buffer;
+
         private Encoder(Charset cs) {
             super(cs, 1.1f, 3.0f);
         }
@@ -665,69 +667,28 @@ public final class UTF_8 extends Unicode {
                                   : encodeBufferLoop(src, dst);
         }
 
-        private CoderResult encodeDstArrayLoop(CharBuffer src,
-                                               ByteBuffer dst)
-        {
-            // only called if already checked to have an array
-            byte[] da = dst.array();
-            int sp = src.position();
-            int dp = dst.position() + dst.arrayOffset();
-            int remaining = dst.remaining();
-            int sl = src.limit();
-            while (sp < sl) {
-                char c = src.get(sp++);
-                if (c < 0x80) {
-                    // Have at most seven bits
-                    if (remaining == 0) {
-                        dst.position(dp - dst.arrayOffset());
-                        return overflow(src, sp - 1);
-                    }
-                    da[dp++] = (byte) c;
-                    --remaining;
-                } else if (c < 0x800) {
-                    // 2 bytes, 11 bits
-                    if (remaining < 2) {
-                        dst.position(dp - dst.arrayOffset());
-                        return overflow(src, sp - 1);
-                    }
-                    da[dp++] = (byte)(0xc0 | (c >> 6));
-                    da[dp++] = (byte)(0x80 | (c & 0x3f));
-                    remaining -= 2;
-                } else if (Character.isSurrogate(c)) {
-                    // Have a surrogate pair
-                    if (sgp == null)
-                        sgp = new Surrogate.Parser();
-                    src.position(sp);
-                    int uc = sgp.parse(c, src);
-                    if (uc < 0) {
-                        dst.position(dp - dst.arrayOffset());
-                        src.position(sp - 1);
-                        return sgp.error();
-                    }
-                    if (remaining < 4) {
-                        dst.position(dp - dst.arrayOffset());
-                        return overflow(src, sp - 1);
-                    }
-                    da[dp++] = (byte)(0xf0 | ((uc >> 18)));
-                    da[dp++] = (byte)(0x80 | ((uc >> 12) & 0x3f));
-                    da[dp++] = (byte)(0x80 | ((uc >>  6) & 0x3f));
-                    da[dp++] = (byte)(0x80 | (uc & 0x3f));
-                    sp++;  // 2 chars
-                    remaining -= 4;
+        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
+            if (buffer == null) {
+                buffer = new char[512];
+            }
+            CharBuffer tempCB = CharBuffer.wrap(buffer);
+            int remaining = src.remaining();
+            while (remaining > 0) {
+                int position = src.position();
+                int length = Math.min(tempCB.capacity(), remaining);
+                src.get(buffer, 0, length);
+
+                tempCB.limit(length);
+                CoderResult cr = encodeArrayLoop(tempCB, dst);
+                int srcRead = tempCB.position();
+                src.position(position + srcRead);
+                if (cr == CoderResult.UNDERFLOW) {
+                    remaining -= srcRead;
+                    tempCB.clear();
                 } else {
-                    // 3 bytes, 16 bits
-                    if (remaining < 3) {
-                        dst.position(dp - dst.arrayOffset());
-                        return overflow(src, sp - 1);
-                    }
-                    da[dp++] = (byte)(0xe0 | ((c >> 12)));
-                    da[dp++] = (byte)(0x80 | ((c >>  6) & 0x3f));
-                    da[dp++] = (byte)(0x80 | (c & 0x3f));
-                    remaining -= 3;
+                    return cr;
                 }
             }
-            src.position(sp);
-            dst.position(dp - dst.arrayOffset());
             return CoderResult.UNDERFLOW;
         }
 
