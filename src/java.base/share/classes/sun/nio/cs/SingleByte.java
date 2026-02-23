@@ -375,7 +375,7 @@ public class SingleByte
             int remaining = src.remaining();
             char[] _buffer = buffer;
             if (_buffer == null || (_buffer.length < 512 && _buffer.length < remaining)) {
-                _buffer = buffer = new char[Math.min(buffer.length, remaining)];
+                _buffer = buffer = new char[Math.min(512, remaining)];
             } 
             CharBuffer tempCB = CharBuffer.wrap(_buffer);
             while (remaining > 0) {
