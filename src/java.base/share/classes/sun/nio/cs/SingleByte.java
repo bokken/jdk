@@ -297,15 +297,15 @@ public class SingleByte
             }
             int sp = src.position();
             int dp = dst.position();
-            int maxLen = Math.min(srcRemaining, dst.remaining());
+            int remaining = Math.min(srcRemaining, dst.remaining());
             if (isASCIICompatible()) {
-                int copied = producer.copyAscii(dst, 0, maxLen);
+                int copied = producer.copyAscii(dst, 0, remaining);
                 sp += copied;
                 src.position(sp);
-                if (copied == maxLen) {
+                if (copied == remaining) {
                     return src.hasRemaining() ? CoderResult.OVERFLOW : CoderResult.UNDERFLOW;
                 }
-                maxLen -= copied;
+                remaining -= copied;
                 dp += copied;
 
                 // we know the next character is not ascii, so let's go ahead and deal with it
@@ -329,16 +329,17 @@ public class SingleByte
                     return CoderResult.unmappableForLength(1);
                 }
                 dst.put(dp++, (byte) b);
-                --maxLen;
+                --remaining;
 
                 // for longer latin 1 sources we will process in strides of 8 bytes at a time
-                if (maxLen > 63 && producer.isLatin1()) {
-                    ByteBuffer latin1Bytes = producer.getLatin1Bytes(1, maxLen);
+                if (remaining > 31 && producer.isLatin1()) {
+                    // source did not have position updated after handling the non-ascii character above
+                    ByteBuffer latin1Bytes = producer.getLatin1Bytes(1, remaining);
                     int bbIdx = 0;
                     latin1Bytes.order(ByteOrder.LITTLE_ENDIAN);
                     ByteOrder order = dst.order();
                     dst.order(ByteOrder.LITTLE_ENDIAN);
-                    for (int j = maxLen - 7; bbIdx < j; bbIdx += 8) {
+                    for (int j = remaining - 7; bbIdx < j; bbIdx += 8) {
                         long word = latin1Bytes.getLong(bbIdx);
                         if ((word & NON_ASCII_MASK) == 0L) {
                             dst.putLong(dp, word);
@@ -371,61 +372,61 @@ public class SingleByte
             return encodeBufferLoop(src, dst);
         }
 
-        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
-            int remaining = src.remaining();
-            char[] _buffer = buffer;
-            if (_buffer == null || (_buffer.length < 512 && _buffer.length < remaining)) {
-                _buffer = buffer = new char[Math.min(512, remaining)];
-            } 
-            CharBuffer tempCB = CharBuffer.wrap(_buffer);
-            while (remaining > 0) {
-                int position = src.position();
-                int length = Math.min(tempCB.capacity(), remaining);
-                src.get(_buffer, 0, length);
-
-                tempCB.limit(length);
-                CoderResult cr = encodeArrayLoop(tempCB, dst);
-                int srcRead = tempCB.position();
-                src.position(position + srcRead);
-                if (cr == CoderResult.UNDERFLOW) {
-                    remaining -= srcRead;
-                    tempCB.clear();
-                } else {
-                    return cr;
-                }
-            }
-            return CoderResult.UNDERFLOW;
-        }
-        
 //        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
-//            int sp = src.position();
-//            byte[] da = dst.array();
-//            int dstOffset = dst.arrayOffset();
-//            int dp = dst.position() + dstOffset;
-//            int sl = sp + Math.min(src.remaining(), dst.remaining());
-//            while (sp < sl) {
-//                char c = src.get(sp++);
-//                int b = encode(c);
-//                if (b == UNMAPPABLE_ENCODING) {
-//                    src.position(sp);
-//                    if (Character.isSurrogate(c)) {
-//                        if (sgp == null)
-//                            sgp = new Surrogate.Parser();
-//                        int uc = sgp.parse(c, src);
-//                        src.position(sp - 1);
-//                        dst.position(dp - dstOffset);
-//                        if (uc < 0)
-//                            return sgp.error();
-//                        return sgp.unmappableResult();
-//                    }
-//                    return CoderResult.unmappableForLength(1);
+//            int remaining = src.remaining();
+//            char[] _buffer = buffer;
+//            if (_buffer == null || (_buffer.length < 512 && _buffer.length < remaining)) {
+//                _buffer = buffer = new char[Math.min(512, remaining)];
+//            } 
+//            CharBuffer tempCB = CharBuffer.wrap(_buffer);
+//            while (remaining > 0) {
+//                int position = src.position();
+//                int length = Math.min(tempCB.capacity(), remaining);
+//                src.get(_buffer, 0, length);
+//
+//                tempCB.limit(length);
+//                CoderResult cr = encodeArrayLoop(tempCB, dst);
+//                int srcRead = tempCB.position();
+//                src.position(position + srcRead);
+//                if (cr == CoderResult.UNDERFLOW) {
+//                    remaining -= srcRead;
+//                    tempCB.clear();
+//                } else {
+//                    return cr;
 //                }
-//                da[dp++] = (byte)b;
 //            }
-//            src.position(sp);
-//            dst.position(dp - dstOffset);
-//            return src.hasRemaining() ? CoderResult.OVERFLOW : CoderResult.UNDERFLOW;
+//            return CoderResult.UNDERFLOW;
 //        }
+        
+        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
+            int sp = src.position();
+            byte[] da = dst.array();
+            int dstOffset = dst.arrayOffset();
+            int dp = dst.position() + dstOffset;
+            int sl = sp + Math.min(src.remaining(), dst.remaining());
+            while (sp < sl) {
+                char c = src.get(sp++);
+                int b = encode(c);
+                if (b == UNMAPPABLE_ENCODING) {
+                    src.position(sp);
+                    if (Character.isSurrogate(c)) {
+                        if (sgp == null)
+                            sgp = new Surrogate.Parser();
+                        int uc = sgp.parse(c, src);
+                        src.position(sp - 1);
+                        dst.position(dp - dstOffset);
+                        if (uc < 0)
+                            return sgp.error();
+                        return sgp.unmappableResult();
+                    }
+                    return CoderResult.unmappableForLength(1);
+                }
+                da[dp++] = (byte)b;
+            }
+            src.position(sp);
+            dst.position(dp - dstOffset);
+            return src.hasRemaining() ? CoderResult.OVERFLOW : CoderResult.UNDERFLOW;
+        }
 
         protected CoderResult encodeLoop(CharBuffer src, ByteBuffer dst) {
             if (src instanceof sun.nio.RawCharacterProducer producer)
