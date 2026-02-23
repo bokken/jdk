@@ -575,9 +575,27 @@ public final class UTF_8 extends Unicode {
                                            sun.nio.RawCharacterProducer producer,
                                            ByteBuffer dst) {
             int copied = producer.copyUTF8(dst, 0, Math.min(src.remaining(), dst.remaining()));
-            src.position(src.position() + copied);
-            return src.hasRemaining() ? CoderResult.OVERFLOW
-                                      : CoderResult.UNDERFLOW;
+            int sp = src.position() + copied;
+            src.position(sp);
+            if (src.hasRemaining()) {
+                int remaining = dst.remaining();
+                // need to check if invalid surrogate pair
+                if (remaining > 3) {
+                    char c = src.get();
+                    if (Character.isSurrogate(c)) {
+                        // Have a surrogate pair
+                        if (sgp == null)
+                            sgp = new Surrogate.Parser();
+                        int uc = sgp.parse(c, src);
+                        src.position(sp);
+                        if (uc < 0) {
+                            return sgp.error();
+                        }
+                    }
+                }
+                return CoderResult.OVERFLOW;
+            }
+            return CoderResult.UNDERFLOW;
         }
 
 //        private CoderResult encodeProducer(CharBuffer src,
