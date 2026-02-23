@@ -47,6 +47,7 @@ public interface RawCharacterProducer {
      */
     int copyAscii(ByteBuffer target, int offset, int len);
     int copyLatin1(ByteBuffer target, int offset, int len);
+    int copyUTF8(ByteBuffer target, int offset, int len);
 
     boolean isLatin1();
 

@@ -573,97 +573,106 @@ public final class UTF_8 extends Unicode {
 
         private CoderResult encodeProducer(CharBuffer src,
                                            sun.nio.RawCharacterProducer producer,
-                                           ByteBuffer dst)
-        {
-            if (!src.hasRemaining()) {
-                return CoderResult.UNDERFLOW;
-            }
-
-            int sp = src.position();
-            int maxLen = Math.min(src.remaining(), dst.remaining());
-            int ascii = producer.copyAscii(dst, 0, maxLen);
-            if (ascii > 0) {
-                sp += ascii;
-                src.position(sp);
-                if (ascii == maxLen) {
-                    return src.hasRemaining() ? CoderResult.OVERFLOW
-                                              : CoderResult.UNDERFLOW;
-                }
-                maxLen -= ascii;
-            }
-
-            int remaining = dst.remaining();
-            if (remaining < 2) {
-                return CoderResult.OVERFLOW;
-            }
-
-            if (producer.isLatin1()) {
-                // if latin 1 process in strides of 8
-                ByteBuffer latin1Bytes = producer.getLatin1Bytes(0, maxLen);
-
-                latin1Bytes.order(ByteOrder.BIG_ENDIAN);
-                ByteOrder order = dst.order();
-                dst.order(ByteOrder.BIG_ENDIAN);
-
-                // we know the next byte is not ascii
-                int bbIdx = 0;
-                int dp = dst.position();
-                int b = latin1Bytes.get(bbIdx++) & 0xFF;
-                dst.put(dp++, (byte) (0xC0 | (b >>> 6)));
-                dst.put(dp++, (byte) (0x80 | (b & 0x3F)));
-                remaining -= 2;
-                
-                for (int  j=maxLen - 7; bbIdx < j && remaining > 7; bbIdx += 8) {
-                    long bytes = latin1Bytes.getLong(bbIdx);
-                    if ((bytes & NON_ASCII_MASK) == 0L) {
-                        dst.putLong(dp, bytes);
-                        remaining -= 8;
-                        dp += 8;
-                    } else {
-                        dst.position(dp);
-                        if (remaining >= 16) {
-                            copy8Latin1ByteUTF8NoRemainingCheck(bytes, dst);
-                        } else {
-                            int copied = copy8Latin1ByteUTF8(bytes, dst);
-                            if (copied != 8) {
-                                src.position(sp + bbIdx + copied);
-                                // no need to set dst position because that was maintained in copy8Latin1ByteUTF8
-                                dst.order(order);
-                                return CoderResult.OVERFLOW;
-                            }
-                        }
-                        remaining = dst.remaining();
-                        dp = dst.position();
-                    }
-                }
-                while (bbIdx < maxLen && remaining > 0) {
-                    b = latin1Bytes.get(bbIdx) & 0xFF;
-
-                    if (b >= 0x80) {
-                        if (remaining == 1) {
-                            break;
-                        }
-                        dst.put(dp++, (byte) (0xC0 | (b >>> 6)));
-                        dst.put(dp++, (byte) (0x80 | (b & 0x3F)));
-                        remaining -= 2;
-                    } else {
-                        dst.put(dp++, (byte) b);
-                        remaining -= 1;
-                    }
-                    ++bbIdx;
-                }
-                sp += bbIdx;
-                src.position(sp);
-                dst.position(dp);
-                dst.order(order);
-
-                return src.hasRemaining() ? CoderResult.OVERFLOW
-                        : CoderResult.UNDERFLOW;
-            }
-
-            return dst.hasArray() ? encodeDstArrayLoop(src, dst)
-                                  : encodeBufferLoop(src, dst);
+                                           ByteBuffer dst) {
+            int copied = producer.copyUTF8(dst, 0, Math.min(src.remaining(), dst.remaining()));
+            src.position(src.position() + copied);
+            return src.hasRemaining() ? CoderResult.OVERFLOW
+                                      : CoderResult.UNDERFLOW;
         }
+
+//        private CoderResult encodeProducer(CharBuffer src,
+//                                           sun.nio.RawCharacterProducer producer,
+//                                           ByteBuffer dst)
+//        {
+//            if (!src.hasRemaining()) {
+//                return CoderResult.UNDERFLOW;
+//            }
+//
+//            int sp = src.position();
+//            int maxLen = Math.min(src.remaining(), dst.remaining());
+//            int ascii = producer.copyAscii(dst, 0, maxLen);
+//            if (ascii > 0) {
+//                sp += ascii;
+//                src.position(sp);
+//                if (ascii == maxLen) {
+//                    return src.hasRemaining() ? CoderResult.OVERFLOW
+//                                              : CoderResult.UNDERFLOW;
+//                }
+//                maxLen -= ascii;
+//            }
+//
+//            int remaining = dst.remaining();
+//            if (remaining < 2) {
+//                return CoderResult.OVERFLOW;
+//            }
+//
+//            if (producer.isLatin1()) {
+//                // if latin 1 process in strides of 8
+//                ByteBuffer latin1Bytes = producer.getLatin1Bytes(0, maxLen);
+//
+//                latin1Bytes.order(ByteOrder.BIG_ENDIAN);
+//                ByteOrder order = dst.order();
+//                dst.order(ByteOrder.BIG_ENDIAN);
+//
+//                // we know the next byte is not ascii
+//                int bbIdx = 0;
+//                int dp = dst.position();
+//                int b = latin1Bytes.get(bbIdx++) & 0xFF;
+//                dst.put(dp++, (byte) (0xC0 | (b >>> 6)));
+//                dst.put(dp++, (byte) (0x80 | (b & 0x3F)));
+//                remaining -= 2;
+//                
+//                for (int  j=maxLen - 7; bbIdx < j && remaining > 7; bbIdx += 8) {
+//                    long bytes = latin1Bytes.getLong(bbIdx);
+//                    if ((bytes & NON_ASCII_MASK) == 0L) {
+//                        dst.putLong(dp, bytes);
+//                        remaining -= 8;
+//                        dp += 8;
+//                    } else {
+//                        dst.position(dp);
+//                        if (remaining >= 16) {
+//                            copy8Latin1ByteUTF8NoRemainingCheck(bytes, dst);
+//                        } else {
+//                            int copied = copy8Latin1ByteUTF8(bytes, dst);
+//                            if (copied != 8) {
+//                                src.position(sp + bbIdx + copied);
+//                                // no need to set dst position because that was maintained in copy8Latin1ByteUTF8
+//                                dst.order(order);
+//                                return CoderResult.OVERFLOW;
+//                            }
+//                        }
+//                        remaining = dst.remaining();
+//                        dp = dst.position();
+//                    }
+//                }
+//                while (bbIdx < maxLen && remaining > 0) {
+//                    b = latin1Bytes.get(bbIdx) & 0xFF;
+//
+//                    if (b >= 0x80) {
+//                        if (remaining == 1) {
+//                            break;
+//                        }
+//                        dst.put(dp++, (byte) (0xC0 | (b >>> 6)));
+//                        dst.put(dp++, (byte) (0x80 | (b & 0x3F)));
+//                        remaining -= 2;
+//                    } else {
+//                        dst.put(dp++, (byte) b);
+//                        remaining -= 1;
+//                    }
+//                    ++bbIdx;
+//                }
+//                sp += bbIdx;
+//                src.position(sp);
+//                dst.position(dp);
+//                dst.order(order);
+//
+//                return src.hasRemaining() ? CoderResult.OVERFLOW
+//                        : CoderResult.UNDERFLOW;
+//            }
+//
+//            return dst.hasArray() ? encodeDstArrayLoop(src, dst)
+//                                  : encodeBufferLoop(src, dst);
+//        }
 
         private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
             int remaining = src.remaining();
@@ -687,6 +696,70 @@ public final class UTF_8 extends Unicode {
             }
             return CoderResult.UNDERFLOW;
         }
+
+//        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
+//            // only called if already checked to have an array
+//            byte[] da = dst.array();
+//            int sp = src.position();
+//            int dp = dst.position() + dst.arrayOffset();
+//            int remaining = dst.remaining();
+//            int sl = src.limit();
+//            while (sp < sl) {
+//                char c = src.get(sp++);
+//                if (c < 0x80) {
+//                    // Have at most seven bits
+//                    if (remaining == 0) {
+//                        dst.position(dp - dst.arrayOffset());
+//                        return overflow(src, sp - 1);
+//                    }
+//                    da[dp++] = (byte) c;
+//                    --remaining;
+//                } else if (c < 0x800) {
+//                    // 2 bytes, 11 bits
+//                    if (remaining < 2) {
+//                        dst.position(dp - dst.arrayOffset());
+//                        return overflow(src, sp - 1);
+//                    }
+//                    da[dp++] = (byte) (0xc0 | (c >> 6));
+//                    da[dp++] = (byte) (0x80 | (c & 0x3f));
+//                    remaining -= 2;
+//                } else if (Character.isSurrogate(c)) {
+//                    // Have a surrogate pair
+//                    if (sgp == null)
+//                        sgp = new Surrogate.Parser();
+//                    src.position(sp);
+//                    int uc = sgp.parse(c, src);
+//                    if (uc < 0) {
+//                        dst.position(dp - dst.arrayOffset());
+//                        src.position(sp - 1);
+//                        return sgp.error();
+//                    }
+//                    if (remaining < 4) {
+//                        dst.position(dp - dst.arrayOffset());
+//                        return overflow(src, sp - 1);
+//                    }
+//                    da[dp++] = (byte) (0xf0 | ((uc >> 18)));
+//                    da[dp++] = (byte) (0x80 | ((uc >> 12) & 0x3f));
+//                    da[dp++] = (byte) (0x80 | ((uc >> 6) & 0x3f));
+//                    da[dp++] = (byte) (0x80 | (uc & 0x3f));
+//                    sp++; // 2 chars
+//                    remaining -= 4;
+//                } else {
+//                    // 3 bytes, 16 bits
+//                    if (remaining < 3) {
+//                        dst.position(dp - dst.arrayOffset());
+//                        return overflow(src, sp - 1);
+//                    }
+//                    da[dp++] = (byte) (0xe0 | ((c >> 12)));
+//                    da[dp++] = (byte) (0x80 | ((c >> 6) & 0x3f));
+//                    da[dp++] = (byte) (0x80 | (c & 0x3f));
+//                    remaining -= 3;
+//                }
+//            }
+//            src.position(sp);
+//            dst.position(dp - dst.arrayOffset());
+//            return CoderResult.UNDERFLOW;
+//        }
 
         protected final CoderResult encodeLoop(CharBuffer src,
                                                ByteBuffer dst)

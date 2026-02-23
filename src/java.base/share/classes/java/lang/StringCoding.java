@@ -27,6 +27,7 @@
 package java.lang;
 
 import jdk.internal.util.Preconditions;
+import jdk.internal.vm.annotation.ForceInline;
 import jdk.internal.vm.annotation.IntrinsicCandidate;
 
 import java.nio.ByteBuffer;
@@ -197,205 +198,138 @@ class StringCoding {
     }
 
 
-    static int copy8Latin1ByteUTF8(byte[] val, int offset, ByteBuffer target) {
-        // assert target.remaining() >= 8;
-        // assert val.length >= offset + 8;
-        int remaining = target.remaining();
-        byte c = val[offset];
-        if (c < 0) {
-            if (remaining == 1) {
-                return 0;
-            }
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-            remaining -= 2;
-        } else {
-            target.put(c);
-            --remaining;
-        }
-        
-        c = val[offset + 1];
-        if (c < 0 && remaining >= 2) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(c);
-            --remaining;
-        } else {
+    static void copy8Latin1ByteUTF8NoRemainingCheck(long word, ByteBuffer target) {
+        // assert target.remaining() >= 16;
+        // having at least 16 bytes remaining means we need no check
+        int dp = target.position();
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 56) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 48) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 40) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 32) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 24) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 16) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) ((word >>> 8) & 0xFF), target, dp);
+        dp += putLatin1AsUtf8NoCheck((int) (word & 0xFF), target, dp);
+        target.position(dp);
+    }
+    
+    @ForceInline
+    private static int putLatin1AsUtf8NoCheck(int b, ByteBuffer target, int dp) {
+        if (b < 0x80) {
+            target.put(dp, (byte) b);
             return 1;
         }
+
+        target.put(dp, (byte) (0xC0 | (b >>> 6)));
+        target.put(dp + 1, (byte) (0x80 | (b & 0x3F)));
+        return 2;
+    }
+
+    static int copy8Latin1ByteUTF8(long word, ByteBuffer target) {
+        // assert target.remaining() >=8;
+        // this guarantees at least first 4 bytes can be written without a check
+        int dp = target.position();
+        int remaining = target.remaining();
         
-        c = val[offset + 2];
-        if (c < 0 && remaining >= 2) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(c);
-            --remaining;
-        } else {
-            return 2;
-        }
+        int bytes = putLatin1AsUtf8NoCheck((int) ((word >>> 56) & 0xFF), target, dp);
+        dp += bytes;
+        remaining -= bytes;
         
-        c = val[offset + 3];
-        if (c < 0 && remaining >= 2) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(c);
-            --remaining;
-        } else {
-            return 3;
-        }
+        bytes = putLatin1AsUtf8NoCheck((int) ((word >>> 48) & 0xFF), target, dp);
+        dp += bytes;
+        remaining -= bytes;
+
+        bytes = putLatin1AsUtf8NoCheck((int) ((word >>> 40) & 0xFF), target, dp);
+        dp += bytes;
+        remaining -= bytes;
         
-        c = val[offset + 4];
-        if (c < 0 && remaining >= 2) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(c);
+        bytes = putLatin1AsUtf8NoCheck((int) ((word >>> 32) & 0xFF), target, dp);
+        dp += bytes;
+        remaining -= bytes;
+        
+        int b = (int) ((word >>> 24) & 0xFF);
+        if (b < 0x80 && remaining >= 1) {
+            target.put(dp++, (byte) b);
             --remaining;
+        } else if (remaining >= 2) {
+            target.put(dp++, (byte) (0xC0 | (b >>> 6)));
+            target.put(dp++, (byte) (0x80 | (b & 0x3F)));
+            remaining -= 2;
         } else {
+            target.position(dp);
             return 4;
         }
         
-        c = val[offset + 5];
-        if (c < 0 && remaining >= 2) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(c);
+        b = (int) ((word >>> 16) & 0xFF);
+        if (b < 0x80 && remaining >= 1) {
+            target.put(dp++, (byte) b);
             --remaining;
+        } else if (remaining >= 2) {
+            target.put(dp++, (byte) (0xC0 | (b >>> 6)));
+            target.put(dp++, (byte) (0x80 | (b & 0x3F)));
+            remaining -= 2;
         } else {
+            target.position(dp);
             return 5;
         }
         
-        c = val[offset + 6];
-        if (c < 0 && remaining >= 2) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-            remaining -= 2;
-        } else if (remaining >= 1) {
-            target.put(c);
+        b = (int) ((word >>> 8) & 0xFF);
+        if (b < 0x80 && remaining >= 1) {
+            target.put(dp++, (byte) b);
             --remaining;
+        } else if (remaining >= 2) {
+            target.put(dp++, (byte) (0xC0 | (b >>> 6)));
+            target.put(dp++, (byte) (0x80 | (b & 0x3F)));
+            remaining -= 2;
         } else {
+            target.position(dp);
             return 6;
         }
         
-        c = val[offset + 7];
-        if (c < 0 && remaining >= 2) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-        } else if (remaining >= 1) {
-            target.put(c);
+        b = (int) (word & 0xFF);
+        if (b < 0x80 && remaining >= 1) {
+            target.put(dp++, (byte) b);
+        } else if (remaining >= 2) {
+            target.put(dp++, (byte) (0xC0 | (b >>> 6)));
+            target.put(dp++, (byte) (0x80 | (b & 0x3F)));
         } else {
+            target.position(dp);
             return 7;
         }
 
+        target.position(dp);
         return 8;
-    }
-
-    static void copy8Latin1ByteUTF8NoRemainingCheck(byte[] val, int offset, ByteBuffer target) {
-        // assert target.remaining() >= 16;
-        // assert val.length >= offset + 8;
-        byte c = val[offset];
-        if (c < 0) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-        } else {
-            target.put(c);
-        }
-
-        c = val[offset + 1];
-        if (c < 0) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-        } else {
-            target.put(c);
-        }
-
-        c = val[offset + 2];
-        if (c < 0) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-        } else {
-            target.put(c);
-        }
-
-        c = val[offset + 3];
-        if (c < 0) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-        } else {
-            target.put(c);
-        }
-
-        c = val[offset + 4];
-        if (c < 0) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-        } else {
-            target.put(c);
-        }
-
-        c = val[offset + 5];
-        if (c < 0) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-        } else {
-            target.put(c);
-        }
-
-        c = val[offset + 6];
-        if (c < 0) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-        } else {
-            target.put(c);
-        }
-
-        c = val[offset + 7];
-        if (c < 0) {
-            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-        } else {
-            target.put(c);
-        }
     }
 
     static int encodeUTF8_UTF16(byte[] val, ByteBuffer target, int srcOffset, int len) {
         if (target.hasArray()) {
-            return encodeUTF8_UTF16_Array(val, target.array(), srcOffset, target.arrayOffset() + target.position(), len, target.remaining());
+            return encodeUTF8_UTF16_Array(val, target, srcOffset, len);
         }
         return encodeUTF8_UTF16_Buffer(val, target, srcOffset, len);
     }
 
     private static int encodeUTF8_UTF16_Buffer(byte[] val, ByteBuffer target, int srcOffset, int len) {
         int sp = srcOffset;
-        int sl = sp + len;
-
+        int sl = sp + Math.min(len, target.remaining());
+        int dp = target.position();
         while (sp < sl) {
             // ascii fast loop;
             char c = StringUTF16.getChar(val, sp);
             if (c >= '\u0080') {
                 break;
             }
-            target.put((byte)c);
+            target.put(dp++, (byte)c);
             sp++;
         }
         int remaining = target.remaining();
         while (sp < sl) {
             char c = StringUTF16.getChar(val, sp++);
             if (c < 0x80 && remaining >= 1) {
-                target.put((byte)c);
+                target.put(dp++, (byte)c);
                 --remaining;
             } else if (c < 0x800 && remaining >= 2) {
-                target.put((byte)(0xc0 | (c >> 6)));
-                target.put((byte)(0x80 | (c & 0x3f)));
+                target.put(dp++, (byte)(0xc0 | (c >> 6)));
+                target.put(dp++, (byte)(0x80 | (c & 0x3f)));
                 remaining -= 2;
             } else if (Character.isSurrogate(c)) {
                 int uc = -1;
@@ -408,48 +342,52 @@ class StringCoding {
                     break;
                 }
 
-                target.put((byte)(0xf0 | (uc >> 18)));
-                target.put((byte)(0x80 | ((uc >> 12) & 0x3f)));
-                target.put((byte)(0x80 | ((uc >>  6) & 0x3f)));
-                target.put((byte)(0x80 | (uc & 0x3f)));
+                target.put(dp++, (byte)(0xf0 | (uc >> 18)));
+                target.put(dp++, (byte)(0x80 | ((uc >> 12) & 0x3f)));
+                target.put(dp++, (byte)(0x80 | ((uc >>  6) & 0x3f)));
+                target.put(dp++, (byte)(0x80 | (uc & 0x3f)));
                 sp++;  // 2 chars
                 remaining -= 4;
             } else if (remaining >= 3) {
                 // 3 bytes, 16 bits
-                target.put((byte)(0xe0 | (c >> 12)));
-                target.put((byte)(0x80 | ((c >>  6) & 0x3f)));
-                target.put((byte)(0x80 | (c & 0x3f)));
+                target.put(dp++, (byte)(0xe0 | (c >> 12)));
+                target.put(dp++, (byte)(0x80 | ((c >>  6) & 0x3f)));
+                target.put(dp++, (byte)(0x80 | (c & 0x3f)));
                 remaining -= 3;
             } else {
                 break;
             }
         }
+        target.position(dp);
         return sp - srcOffset;
     }
 
-    static int encodeUTF8_UTF16_Array(byte[] val, byte[] target, int srcOffset, int targetOffset, int len, int targetRemaining) {
+    static int encodeUTF8_UTF16_Array(byte[] val, ByteBuffer target, int srcOffset, int len) {
         int sp = srcOffset;
-        int sl = sp + len;
-
+        int remaining = target.remaining();
+        int sl = sp + Math.min(len, remaining);
+        byte[] da = target.array();
+        int dp = target.position() + target.arrayOffset();
+        
         while (sp < sl) {
             // ascii fast loop;
             char c = StringUTF16.getChar(val, sp);
             if (c >= '\u0080') {
                 break;
             }
-            target[targetOffset++] = (byte) c;
+            da[dp++] = (byte) c;
             sp++;
-            --targetRemaining;
+            --remaining;
         }
         while (sp < sl) {
             char c = StringUTF16.getChar(val, sp++);
-            if (c < 0x80 && targetRemaining >= 1) {
-                target[targetOffset++] = (byte) c;
-                --targetRemaining;
-            } else if (c < 0x800 && targetRemaining >= 2) {
-                target[targetOffset++] = (byte)(0xc0 | (c >> 6));
-                target[targetOffset++] = (byte)(0x80 | (c & 0x3f));
-                targetRemaining -= 2;
+            if (c < 0x80 && remaining >= 1) {
+                da[dp++] = (byte) c;
+                --remaining;
+            } else if (c < 0x800 && remaining >= 2) {
+                da[dp++] = (byte)(0xc0 | (c >> 6));
+                da[dp++] = (byte)(0x80 | (c & 0x3f));
+                remaining -= 2;
             } else if (Character.isSurrogate(c)) {
                 int uc = -1;
                 char c2;
@@ -457,26 +395,27 @@ class StringCoding {
                         Character.isLowSurrogate(c2 = StringUTF16.getChar(val, sp))) {
                     uc = Character.toCodePoint(c, c2);
                 }
-                if (uc < 0 || targetRemaining <= 4) {
+                if (uc < 0 || remaining <= 4) {
                     break;
                 }
 
-                target[targetOffset++] = (byte)(0xf0 | (uc >> 18));
-                target[targetOffset++] = (byte)(0x80 | ((uc >> 12) & 0x3f));
-                target[targetOffset++] = (byte)(0x80 | ((uc >>  6) & 0x3f));
-                target[targetOffset++] = (byte)(0x80 | (uc & 0x3f));
+                da[dp++] = (byte)(0xf0 | (uc >> 18));
+                da[dp++] = (byte)(0x80 | ((uc >> 12) & 0x3f));
+                da[dp++] = (byte)(0x80 | ((uc >>  6) & 0x3f));
+                da[dp++] = (byte)(0x80 | (uc & 0x3f));
                 sp++;  // 2 chars
-                targetRemaining -= 4;
-            } else if (targetRemaining >= 3) {
+                remaining -= 4;
+            } else if (remaining >= 3) {
                 // 3 bytes, 16 bits
-                target[targetOffset++] = (byte)(0xe0 | (c >> 12));
-                target[targetOffset++] = (byte)(0x80 | ((c >>  6) & 0x3f));
-                target[targetOffset++] = (byte)(0x80 | (c & 0x3f));
-                targetRemaining -= 3;
+                da[dp++] = (byte)(0xe0 | (c >> 12));
+                da[dp++] = (byte)(0x80 | ((c >>  6) & 0x3f));
+                da[dp++] = (byte)(0x80 | (c & 0x3f));
+                remaining -= 3;
             } else {
                 break;
             }
         }
+        target.position(dp - target.arrayOffset());
         return sp - srcOffset;
     }
 }

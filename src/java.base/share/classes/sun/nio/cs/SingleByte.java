@@ -193,6 +193,7 @@ public class SingleByte
         private final char[] c2b;
         private final char[] c2bIndex;
         private final boolean isASCIICompatible;
+        private char[] buffer;
 
         public Encoder(Charset cs, char[] c2b, char[] c2bIndex, boolean isASCIICompatible) {
             super(cs, 1.0f, 1.0f);
@@ -372,12 +373,15 @@ public class SingleByte
 
         private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
             int remaining = src.remaining();
-            char[] buffer = new char[Math.min(512, remaining)];
-            CharBuffer tempCB = CharBuffer.wrap(buffer);
+            char[] _buffer = buffer;
+            if (_buffer == null || (_buffer.length < 512 && _buffer.length < remaining)) {
+                _buffer = buffer = new char[Math.min(buffer.length, remaining)];
+            } 
+            CharBuffer tempCB = CharBuffer.wrap(_buffer);
             while (remaining > 0) {
                 int position = src.position();
                 int length = Math.min(tempCB.capacity(), remaining);
-                src.get(buffer, 0, length);
+                src.get(_buffer, 0, length);
 
                 tempCB.limit(length);
                 CoderResult cr = encodeArrayLoop(tempCB, dst);
@@ -392,6 +396,36 @@ public class SingleByte
             }
             return CoderResult.UNDERFLOW;
         }
+        
+//        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
+//            int sp = src.position();
+//            byte[] da = dst.array();
+//            int dstOffset = dst.arrayOffset();
+//            int dp = dst.position() + dstOffset;
+//            int sl = sp + Math.min(src.remaining(), dst.remaining());
+//            while (sp < sl) {
+//                char c = src.get(sp++);
+//                int b = encode(c);
+//                if (b == UNMAPPABLE_ENCODING) {
+//                    src.position(sp);
+//                    if (Character.isSurrogate(c)) {
+//                        if (sgp == null)
+//                            sgp = new Surrogate.Parser();
+//                        int uc = sgp.parse(c, src);
+//                        src.position(sp - 1);
+//                        dst.position(dp - dstOffset);
+//                        if (uc < 0)
+//                            return sgp.error();
+//                        return sgp.unmappableResult();
+//                    }
+//                    return CoderResult.unmappableForLength(1);
+//                }
+//                da[dp++] = (byte)b;
+//            }
+//            src.position(sp);
+//            dst.position(dp - dstOffset);
+//            return src.hasRemaining() ? CoderResult.OVERFLOW : CoderResult.UNDERFLOW;
+//        }
 
         protected CoderResult encodeLoop(CharBuffer src, ByteBuffer dst) {
             if (src instanceof sun.nio.RawCharacterProducer producer)

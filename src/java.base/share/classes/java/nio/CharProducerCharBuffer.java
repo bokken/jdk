@@ -76,11 +76,11 @@ final class CharProducerCharBuffer extends StringCharBuffer implements sun.nio.R
 //        return producer.getUTF16Bytes(srcOffset + position, Math.min(len, remaining()));
 //    }
 
-//    @Override
-//    public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
-//        int position = offset + position();
-//        return producer.copyUTF8(target, srcOffset + position, Math.min(len, remaining()));
-//    }
+    @Override
+    public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
+        int position = offset + position();
+        return producer.copyUTF8(target, srcOffset + position, Math.min(len, remaining()));
+    }
 
     @Override
     public CharBuffer slice() {

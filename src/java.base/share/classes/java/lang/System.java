@@ -2038,25 +2038,13 @@ public final class System {
             //is this optimized anywhere?
             int i=0;
             int dp = target.position();
-            if (target.hasArray()) {
-                byte[] dst = target.array();
-                int dstOffset = target.arrayOffset();
-                dp += dstOffset;
-                for (; i<actualLen; ++i) {
-                    char c = StringUTF16.getChar(val, i + srcOffset);
-                    if (c >= 0x80)
-                        break;
-                    dst[dp++] = (byte) c;
-                }
-                dp -= dstOffset;
-            } else {
-                for (; i<actualLen; ++i) {
-                    char c = StringUTF16.getChar(val, i + srcOffset);
-                    if (c >= 0x80)
-                        break;
-                    target.put(dp++, (byte)c);
-                }
+            for (; i < actualLen; ++i) {
+                char c = StringUTF16.getChar(val, i + srcOffset);
+                if (c >= 0x80)
+                    break;
+                target.put(dp++, (byte) c);
             }
+
             target.position(dp);
             return i;
         }
@@ -2109,7 +2097,7 @@ public final class System {
 //            return ByteBuffer.wrap(asb.value).position(offset << 1).limit((offset + len) << 1).slice().asReadOnlyBuffer().order(ByteOrder.nativeOrder());
 //        }
 
-//        @Override
+        @Override
         public int copyUTF8(ByteBuffer target, int srcOffset, int len) {
             Preconditions.checkFromIndexSize(srcOffset, len, object.length(), Preconditions.IOOBE_FORMATTER);
             int actualLen = Math.min(len, target.remaining());
@@ -2123,42 +2111,48 @@ public final class System {
                     }
                 }
                 int remaining = target.remaining();
-                int i=srcOffset + asciiCnt;
+                int i = srcOffset + asciiCnt;
                 ByteOrder order = target.order();
                 target.order(ByteOrder.BIG_ENDIAN);
-                try {
-                    remaining = target.remaining();
-                    for (int j = srcOffset + actualLen - 7; i < j && remaining >= 8; i += 8) {
-                        long bytes = ByteArray.getLong(val, i);
-                        if ((bytes & NON_ASCII_MASK) == 0L) {
-                            target.putLong(bytes);
-                            remaining -= 8;
+
+                remaining = target.remaining();
+                int dp = target.position();
+                for (int j = srcOffset + actualLen - 7; i < j && remaining > 7; i += 8) {
+                    long bytes = ByteArray.getLong(val, i);
+                    if ((bytes & NON_ASCII_MASK) == 0L) {
+                        target.putLong(dp, bytes);
+                        remaining -= 8;
+                        dp += 8;
+                    } else {
+                        target.position(dp);
+                        if (remaining >= 16) {
+                            StringCoding.copy8Latin1ByteUTF8NoRemainingCheck(bytes, target);
                         } else {
-                            if (remaining >= 16) {
-                                StringCoding.copy8Latin1ByteUTF8NoRemainingCheck(val, i, target);
-                            } else {
-                                int copied = StringCoding.copy8Latin1ByteUTF8(val, i, target);
-                                if (copied != 8) {
-                                    return (i + copied) - srcOffset;
-                                }
+                            int copied = StringCoding.copy8Latin1ByteUTF8(bytes, target);
+                            if (copied != 8) {
+                                target.order(order);
+                                return (i + copied) - srcOffset;
                             }
-                            remaining = target.remaining();
                         }
+                        remaining = target.remaining();
+                        dp = target.position();
                     }
-                    for (int j = actualLen + srcOffset; i < j && remaining > 0; ++i) {
-                        byte c = val[i];
-                        if (c < 0 && remaining >= 2) {
-                            target.putShort((short) ((((0xc0 | ((c & 0xff) >> 6)) & 0xFF) << 8)
-                                    | ((0x80 | (c & 0x3F)) & 0xFF)));
-                            remaining -= 2;
-                        } else {
-                            target.put(c);
-                            --remaining;
-                        }
-                    }
-                } finally {
-                    target.order(order);
                 }
+                for (int j = actualLen + srcOffset; i < j && remaining > 0; ++i) {
+                    int b = (val[i] & 0xFF);
+                    if (b < 0x80) {
+                        target.put(dp++, (byte) b);
+                        --remaining;
+                    } else if (remaining >= 2) {
+                        target.put(dp++, (byte) (0xC0 | (b >>> 6)));
+                        target.put(dp++, (byte) (0x80 | (b & 0x3F)));
+                        remaining -= 2;
+                    } else {
+                        remaining = 0;
+                    }
+                }
+                target.position(dp);
+                target.order(order);
                 return i - srcOffset;
             }
             return StringCoding.encodeUTF8_UTF16(val, target, srcOffset, actualLen);
