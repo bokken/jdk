@@ -2035,6 +2035,13 @@ public final class System {
                 }
                 return asciiCnt;
             }
+            if (target.hasArray()) {
+                byte[] dst = target.array();
+                int dp = target.arrayOffset() + target.position();
+                // TODO: do we know for certain all ascii chars have been copied or could
+                // this stop prematurely (like above)
+                return StringCoding.encodeAsciiArray(val, srcOffset, dst, dp, actualLen);
+            }
             //is this optimized anywhere?
             int i=0;
             int dp = target.position();

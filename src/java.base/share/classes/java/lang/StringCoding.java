@@ -197,6 +197,45 @@ class StringCoding {
         return i;
     }
 
+    /**
+     * Encodes as many ASCII codepoints as possible from the from the source byte
+     * array containing characters encoded in UTF-16 into the destination byte
+     * array, assuming that the encoding is ASCII compatible.
+     *
+     * @param sa the source byte array containing characters encoded in UTF-16
+     * @param sp the index of the <em>character (not byte!)</em> from the source array to start reading from
+     * @param da the target byte array
+     * @param dp the index of the target array to start writing to
+     * @param len the maximum number of <em>characters (not bytes!)</em> to be encoded
+     * @return the total number of <em>characters (not bytes!)</em> successfully encoded
+     * @throws NullPointerException if any of the provided arrays is null
+     */
+    static int encodeAsciiArray(byte[] sa, int sp,
+                                byte[] da, int dp, int len) {
+        // This method should tolerate invalid arguments, matching the lenient behavior of the VM intrinsic.
+        // Hence, using operator expressions instead of `Preconditions`, which throw on failure.
+        if ((sp | dp | len) < 0 ||
+                sp >= sa.length ||      // Implicit null check on `sa`
+                dp >= da.length) {      // Implicit null check on `da`
+            return 0;
+        }
+        int minLen = Math.min(len, Math.min(sa.length - sp, da.length - dp));
+        return encodeAsciiArray0(sa, sp, da, dp, minLen);
+    }
+
+    @IntrinsicCandidate
+    private static int encodeAsciiArray0(byte[] sa, int sp,
+                                         byte[] da, int dp, int len) {
+        int i = 0;
+        for (; i < len; i++) {
+            char c = StringUTF16.getChar(sa, sp++);
+            if (c >= '\u0080')
+                break;
+            da[dp++] = (byte)c;
+        }
+        return i;
+    }
+
 
     static void copy8Latin1ByteUTF8NoRemainingCheck(long word, ByteBuffer target) {
         // assert target.remaining() >= 16;

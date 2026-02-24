@@ -523,23 +523,25 @@ public final class UTF_8 extends Unicode {
         {
             int sp = src.position();
             int dp = dst.position();
-            int remaining = dst.remaining();
+            int dl = dst.limit();
             int sl = src.limit();
             while (sp < sl) {
                 char c = src.get(sp++);
                 if (c < 0x80) {
                     // Have at most seven bits
-                    if (remaining == 0)
+                    if (dl - dp == 0) {
+                        dst.position(dp);
                         return overflow(src, sp - 1);
+                    }
                     dst.put(dp++, (byte)c);
-                    --remaining;
                 } else if (c < 0x800) {
                     // 2 bytes, 11 bits
-                    if (remaining < 2)
+                    if (dl - dp < 2) {
+                        dst.position(dp);
                         return overflow(src, sp - 1);
+                    }
                     dst.put(dp++, (byte)(0xc0 | (c >> 6)));
                     dst.put(dp++, (byte)(0x80 | (c & 0x3f)));
-                    remaining -= 2;
                 } else if (Character.isSurrogate(c)) {
                     // Have a surrogate pair
                     if (sgp == null)
@@ -550,22 +552,24 @@ public final class UTF_8 extends Unicode {
                         src.position(sp - 1);
                         return sgp.error();
                     }
-                    if (remaining < 4)
+                    if (dl - dp < 4) {
+                        dst.position(dp);
                         return overflow(src, sp - 1);
+                    }
                     dst.put(dp++, (byte)(0xf0 | ((uc >> 18))));
                     dst.put(dp++, (byte)(0x80 | ((uc >> 12) & 0x3f)));
                     dst.put(dp++, (byte)(0x80 | ((uc >>  6) & 0x3f)));
                     dst.put(dp++, (byte)(0x80 | (uc & 0x3f)));
                     sp++;  // 2 chars
-                    remaining -= 4;
                 } else {
                     // 3 bytes, 16 bits
-                    if (remaining < 3)
+                    if (dl - dp < 3) {
+                        dst.position(dp);
                         return overflow(src, sp - 1);
+                    }
                     dst.put(dp++, (byte)(0xe0 | ((c >> 12))));
                     dst.put(dp++, (byte)(0x80 | ((c >>  6) & 0x3f)));
                     dst.put(dp++, (byte)(0x80 | (c & 0x3f)));
-                    remaining -= 3;
                 }
             }
             src.position(sp);
@@ -622,8 +626,10 @@ public final class UTF_8 extends Unicode {
                 maxLen -= ascii;
             }
 
-            int remaining = dst.remaining();
-            if (remaining < 2) {
+//            int remaining = dst.remaining();
+            int dp = dst.position();
+            int dl = dst.limit();
+            if (dl - dp < 2) {
                 return CoderResult.OVERFLOW;
             }
 
@@ -637,21 +643,18 @@ public final class UTF_8 extends Unicode {
 
                 // we know the next byte is not ascii
                 int bbIdx = 0;
-                int dp = dst.position();
                 int b = latin1Bytes.get(bbIdx++) & 0xFF;
                 dst.put(dp++, (byte) (0xC0 | (b >>> 6)));
                 dst.put(dp++, (byte) (0x80 | (b & 0x3F)));
-                remaining -= 2;
                 
-                for (int  j=maxLen - 7; bbIdx < j && remaining > 7; bbIdx += 8) {
+                for (int  j=maxLen - 7, k=dl - 7; bbIdx < j && dp < k; bbIdx += 8) {
                     long bytes = latin1Bytes.getLong(bbIdx);
                     if ((bytes & NON_ASCII_MASK) == 0L) {
                         dst.putLong(dp, bytes);
-                        remaining -= 8;
                         dp += 8;
                     } else {
                         dst.position(dp);
-                        if (remaining >= 16) {
+                        if (dl - dp >= 16) {
                             copy8Latin1ByteUTF8NoRemainingCheck(bytes, dst);
                         } else {
                             int copied = copy8Latin1ByteUTF8(bytes, dst);
@@ -662,28 +665,27 @@ public final class UTF_8 extends Unicode {
                                 return CoderResult.OVERFLOW;
                             }
                         }
-                        remaining = dst.remaining();
                         dp = dst.position();
                     }
                 }
-                while (bbIdx < maxLen && remaining > 0) {
+                while (bbIdx < maxLen) {
                     b = latin1Bytes.get(bbIdx) & 0xFF;
 
                     if (b >= 0x80) {
-                        if (remaining == 1) {
+                        if (dl - dp == 1) {
                             break;
                         }
                         dst.put(dp++, (byte) (0xC0 | (b >>> 6)));
                         dst.put(dp++, (byte) (0x80 | (b & 0x3F)));
-                        remaining -= 2;
                     } else {
+                        if (dl - dp == 0) {
+                            break;
+                        }
                         dst.put(dp++, (byte) b);
-                        remaining -= 1;
                     }
                     ++bbIdx;
                 }
-                sp += bbIdx;
-                src.position(sp);
+                src.position(sp + bbIdx);
                 dst.position(dp);
                 dst.order(order);
 
@@ -695,96 +697,92 @@ public final class UTF_8 extends Unicode {
                                   : encodeBufferLoop(src, dst);
         }
 
-        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
-            int remaining = src.remaining();
-            char[] _buffer = this.buffer;
-            if (_buffer == null) {
-                _buffer = this.buffer = new char[512];
-            }
-            CharBuffer tempCB = CharBuffer.wrap(_buffer);
-            int position = src.position();
-            while (remaining > 0) {
-                int length = Math.min(tempCB.capacity(), remaining);
-                src.get(_buffer, 0, length);
-
-                tempCB.limit(length);
-                CoderResult cr = encodeArrayLoop(tempCB, dst);
-                int srcRead = tempCB.position();
-                position += srcRead;
-                src.position(position);
-                if (cr == CoderResult.UNDERFLOW) {
-                    remaining -= srcRead;
-                    tempCB.clear();
-                } else {
-                    return cr;
-                }
-            }
-            return CoderResult.UNDERFLOW;
-        }
-
 //        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
-//            // only called if already checked to have an array
-//            byte[] da = dst.array();
-//            int sp = src.position();
-//            int dp = dst.position() + dst.arrayOffset();
-//            int remaining = dst.remaining();
-//            int sl = src.limit();
-//            while (sp < sl) {
-//                char c = src.get(sp++);
-//                if (c < 0x80) {
-//                    // Have at most seven bits
-//                    if (remaining == 0) {
-//                        dst.position(dp - dst.arrayOffset());
-//                        return overflow(src, sp - 1);
-//                    }
-//                    da[dp++] = (byte) c;
-//                    --remaining;
-//                } else if (c < 0x800) {
-//                    // 2 bytes, 11 bits
-//                    if (remaining < 2) {
-//                        dst.position(dp - dst.arrayOffset());
-//                        return overflow(src, sp - 1);
-//                    }
-//                    da[dp++] = (byte) (0xc0 | (c >> 6));
-//                    da[dp++] = (byte) (0x80 | (c & 0x3f));
-//                    remaining -= 2;
-//                } else if (Character.isSurrogate(c)) {
-//                    // Have a surrogate pair
-//                    if (sgp == null)
-//                        sgp = new Surrogate.Parser();
-//                    src.position(sp);
-//                    int uc = sgp.parse(c, src);
-//                    if (uc < 0) {
-//                        dst.position(dp - dst.arrayOffset());
-//                        src.position(sp - 1);
-//                        return sgp.error();
-//                    }
-//                    if (remaining < 4) {
-//                        dst.position(dp - dst.arrayOffset());
-//                        return overflow(src, sp - 1);
-//                    }
-//                    da[dp++] = (byte) (0xf0 | ((uc >> 18)));
-//                    da[dp++] = (byte) (0x80 | ((uc >> 12) & 0x3f));
-//                    da[dp++] = (byte) (0x80 | ((uc >> 6) & 0x3f));
-//                    da[dp++] = (byte) (0x80 | (uc & 0x3f));
-//                    sp++; // 2 chars
-//                    remaining -= 4;
+//            int remaining = src.remaining();
+//            char[] _buffer = this.buffer;
+//            if (_buffer == null) {
+//                _buffer = this.buffer = new char[512];
+//            }
+//            CharBuffer tempCB = CharBuffer.wrap(_buffer);
+//            int position = src.position();
+//            while (remaining > 0) {
+//                int length = Math.min(tempCB.capacity(), remaining);
+//                src.get(_buffer, 0, length);
+//
+//                tempCB.limit(length);
+//                CoderResult cr = encodeArrayLoop(tempCB, dst);
+//                int srcRead = tempCB.position();
+//                position += srcRead;
+//                src.position(position);
+//                if (cr == CoderResult.UNDERFLOW) {
+//                    remaining -= srcRead;
+//                    tempCB.clear();
 //                } else {
-//                    // 3 bytes, 16 bits
-//                    if (remaining < 3) {
-//                        dst.position(dp - dst.arrayOffset());
-//                        return overflow(src, sp - 1);
-//                    }
-//                    da[dp++] = (byte) (0xe0 | ((c >> 12)));
-//                    da[dp++] = (byte) (0x80 | ((c >> 6) & 0x3f));
-//                    da[dp++] = (byte) (0x80 | (c & 0x3f));
-//                    remaining -= 3;
+//                    return cr;
 //                }
 //            }
-//            src.position(sp);
-//            dst.position(dp - dst.arrayOffset());
 //            return CoderResult.UNDERFLOW;
 //        }
+
+        private CoderResult encodeDstArrayLoop(CharBuffer src, ByteBuffer dst) {
+            // only called if already checked to have an array
+            byte[] da = dst.array();
+            int sp = src.position();
+            int dp = dst.position() + dst.arrayOffset();
+            int dl = dst.limit();
+            int sl = src.limit();
+            while (sp < sl) {
+                char c = src.get(sp++);
+                if (c < 0x80) {
+                    // Have at most seven bits
+                    if (dp >= dl) {
+                        dst.position(dp - dst.arrayOffset());
+                        return overflow(src, sp - 1);
+                    }
+                    da[dp++] = (byte) c;
+                } else if (c < 0x800) {
+                    // 2 bytes, 11 bits
+                    if (dl - dp < 2) {
+                        dst.position(dp - dst.arrayOffset());
+                        return overflow(src, sp - 1);
+                    }
+                    da[dp++] = (byte) (0xc0 | (c >> 6));
+                    da[dp++] = (byte) (0x80 | (c & 0x3f));
+                } else if (Character.isSurrogate(c)) {
+                    // Have a surrogate pair
+                    if (sgp == null)
+                        sgp = new Surrogate.Parser();
+                    src.position(sp);
+                    int uc = sgp.parse(c, src);
+                    if (uc < 0) {
+                        dst.position(dp - dst.arrayOffset());
+                        src.position(sp - 1);
+                        return sgp.error();
+                    }
+                    if (dl - dp < 4) {
+                        dst.position(dp - dst.arrayOffset());
+                        return overflow(src, sp - 1);
+                    }
+                    da[dp++] = (byte) (0xf0 | ((uc >> 18)));
+                    da[dp++] = (byte) (0x80 | ((uc >> 12) & 0x3f));
+                    da[dp++] = (byte) (0x80 | ((uc >> 6) & 0x3f));
+                    da[dp++] = (byte) (0x80 | (uc & 0x3f));
+                    sp++; // 2 chars
+                } else {
+                    // 3 bytes, 16 bits
+                    if (dl - dp < 3) {
+                        dst.position(dp - dst.arrayOffset());
+                        return overflow(src, sp - 1);
+                    }
+                    da[dp++] = (byte) (0xe0 | ((c >> 12)));
+                    da[dp++] = (byte) (0x80 | ((c >> 6) & 0x3f));
+                    da[dp++] = (byte) (0x80 | (c & 0x3f));
+                }
+            }
+            src.position(sp);
+            dst.position(dp - dst.arrayOffset());
+            return CoderResult.UNDERFLOW;
+        }
 
         protected final CoderResult encodeLoop(CharBuffer src,
                                                ByteBuffer dst)
