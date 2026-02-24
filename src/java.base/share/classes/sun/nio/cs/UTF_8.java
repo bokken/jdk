@@ -672,7 +672,7 @@ public final class UTF_8 extends Unicode {
                     b = latin1Bytes.get(bbIdx) & 0xFF;
 
                     if (b >= 0x80) {
-                        if (dl - dp == 1) {
+                        if (dl - dp < 2) {
                             break;
                         }
                         dst.put(dp++, (byte) (0xC0 | (b >>> 6)));
