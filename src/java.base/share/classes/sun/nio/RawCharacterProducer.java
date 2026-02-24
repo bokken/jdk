@@ -51,5 +51,21 @@ public interface RawCharacterProducer {
 
     boolean isLatin1();
 
+    /**
+     * Provides a {@link ByteBuffer#asReadOnlyBuffer()) access to the latin-1 bytes.
+     * The {@code ByteBuffer} returned will reflect the <i>offset</i> and <i>len</i>
+     * and will be at {@link ByteBuffer#position{}) of {@code 0} with both
+     * {@link ByteBuffer#capacity()} and {@link ByteBuffer#limit()} reflecting the
+     * <i>len</i>. This means it is not possible to access values outside the requested
+     * range.
+     * 
+     * @param offset The offset (in characters) to start at.
+     * @param len    The max number of characters to make available.
+     * @return {@link ByteBuffer#asReadOnlyBuffer()Read-only) access to the latin-1 bytes.
+     * @throws IllegalStateException if {@link #isLatin1()} is {@code false}.
+     * @throws IndexOutOfBoundsException if {@code offset < 0} or
+     *                                   {@code offset + len} exceeds length of this
+     *                                   object.
+     */
     ByteBuffer getLatin1Bytes(int offset, int len);
 }

@@ -223,7 +223,7 @@ class StringCoding {
         return encodeAsciiArray0(sa, sp, da, dp, minLen);
     }
 
-//    @IntrinsicCandidate
+    @IntrinsicCandidate
     private static int encodeAsciiArray0(byte[] sa, int sp,
                                          byte[] da, int dp, int len) {
         int i = 0;
