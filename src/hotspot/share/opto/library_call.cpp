@@ -667,6 +667,7 @@ bool LibraryCallKit::try_to_inline(int predicate) {
   case vmIntrinsics::_encodeByteISOArray:
     return inline_encodeISOArray(false);
   case vmIntrinsics::_encodeAsciiArray:
+  case vmIntrinsics::_encodeAsciiArrayByte:
     return inline_encodeISOArray(true);
 
   case vmIntrinsics::_updateCRC32:
