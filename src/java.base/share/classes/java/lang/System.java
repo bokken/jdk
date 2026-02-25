@@ -2040,7 +2040,9 @@ public final class System {
                 int dp = target.arrayOffset() + target.position();
                 // TODO: do we know for certain all ascii chars have been copied or could
                 // this stop prematurely (like above)
-                return StringCoding.encodeAsciiArray(val, srcOffset, dst, dp, actualLen);
+                int copied = StringCoding.encodeAsciiArray(val, srcOffset, dst, dp, actualLen);
+                target.position(dp - target.arrayOffset() + copied);
+                return copied;
             }
             //is this optimized anywhere?
             int i=0;
