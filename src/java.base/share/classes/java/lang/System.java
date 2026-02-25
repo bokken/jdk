@@ -2070,7 +2070,9 @@ public final class System {
             if (target.hasArray()) {
                 byte[] dst = target.array();
                 int dp = target.arrayOffset() + target.position();
-                return StringCoding.encodeISOArray(val, srcOffset, dst, dp, actualLen);
+                int copied = StringCoding.encodeISOArray(val, srcOffset, dst, dp, actualLen);
+                target.position(dp - target.arrayOffset() + copied);
+                return copied;
             }
             // TODO: ideally this can also be made intrinsic
             int i=0;
